@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { gsap } from 'gsap';
 
 interface LogoProps {
   className?: string;
@@ -9,9 +10,62 @@ export const Logo: React.FC<LogoProps> = ({ className }) => {
   const { createNewChat } = useAppContext();
   const [isClicked, setIsClicked] = useState(false);
   
+  // Animation refs
+  const logoContainerRef = useRef<HTMLDivElement>(null);
+  const logoIconRef = useRef<HTMLDivElement>(null);
+  const logoTextRef = useRef<HTMLSpanElement>(null);
+  
+  // Initialize animations on mount
+  useEffect(() => {
+    // Create a pulse animation timeline for the logo
+    const timeline = gsap.timeline({ repeat: -1, repeatDelay: 5 });
+    timeline.to(logoIconRef.current, {
+      boxShadow: '0 0 12px rgba(79, 70, 229, 0.6)',
+      scale: 1.1,
+      duration: 0.8,
+      ease: 'power2.inOut'
+    });
+    timeline.to(logoIconRef.current, {
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      scale: 1,
+      duration: 0.8,
+      ease: 'power2.inOut'
+    });
+    
+    // Create a subtle float effect for the text
+    gsap.to(logoTextRef.current, {
+      y: -3,
+      duration: 1.5,
+      repeat: -1,
+      yoyo: true,
+      ease: 'sine.inOut'
+    });
+    
+    return () => {
+      // Clean up animations on unmount
+      timeline.kill();
+    };
+  }, []);
+  
   const handleLogoClick = () => {
     console.log('Logo clicked, creating new chat');
     setIsClicked(true);
+    
+    // Animated click effect
+    if (logoContainerRef.current) {
+      gsap.to(logoContainerRef.current, {
+        scale: 0.92,
+        duration: 0.2,
+        ease: 'power2.out'
+      });
+      
+      gsap.to(logoContainerRef.current, {
+        scale: 1,
+        duration: 0.2,
+        delay: 0.2,
+        ease: 'back.out(1.7)'
+      });
+    }
     
     // Create new chat
     createNewChat();
@@ -22,13 +76,29 @@ export const Logo: React.FC<LogoProps> = ({ className }) => {
     }, 500);
   };
   
+  // Create a loading animation when the logo is clicked
+  useEffect(() => {
+    if (isClicked && logoIconRef.current) {
+      // Create a quick spin animation
+      gsap.to(logoIconRef.current.querySelector('img'), {
+        rotation: 360,
+        duration: 0.5,
+        ease: 'power1.inOut'
+      });
+    }
+  }, [isClicked]);
+  
   return (
     <div 
-      className={`flex items-center gap-2 cursor-pointer transition-transform ${isClicked ? 'scale-95' : 'scale-100'} ${className || ''}`}
+      ref={logoContainerRef}
+      className={`flex items-center gap-2 cursor-pointer ${className || ''}`}
       onClick={handleLogoClick}
       title="Start a new chat"
     >
-      <div className={`h-8 w-8 rounded-full bg-white flex items-center justify-center shadow-md overflow-hidden ${isClicked ? 'opacity-80' : 'opacity-100'}`}>
+      <div 
+        ref={logoIconRef}
+        className={`h-8 w-8 rounded-full bg-white flex items-center justify-center shadow-md overflow-hidden`}
+      >
         <img 
           src="/images/molecule-icon.png"
           alt="Molecule icon" 
@@ -40,7 +110,10 @@ export const Logo: React.FC<LogoProps> = ({ className }) => {
           }}
         />
       </div>
-      <span className={`font-bold text-xl bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent hover:from-blue-800 hover:to-indigo-700 transition-colors ${isClicked ? 'opacity-80' : 'opacity-100'}`}>
+      <span 
+        ref={logoTextRef}
+        className={`font-bold text-xl bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent hover:from-blue-800 hover:to-indigo-700 transition-colors`}
+      >
         Emerce
       </span>
     </div>

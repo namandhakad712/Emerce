@@ -163,6 +163,11 @@ export const generateResponse = async (
   modelId: string = 'gemini-pro',
   generationConfig: GenerationConfig = DEFAULT_GENERATION_CONFIG
 ) => {
+  // Add this at the beginning of the function
+  console.log('🔍 Using Google AI SDK version:', (genAI as any).client?.apiVersion || 'unknown');
+  console.log('🔍 API endpoint:', (genAI as any).client?.apiEndpoint || 'default');
+  console.log('🔍 Using model:', modelId);
+
   try {
     // Basic error handling - validate messages
     if (!messages || messages.length === 0) {
@@ -190,122 +195,85 @@ export const generateResponse = async (
         content: 'I need some input to respond to. Please provide a question or message.',
       };
     }
-    
-    // Determine if this is an educational question that needs the template
-    const lastMessage = messages[messages.length - 1];
-    const userMessage = typeof lastMessage.content === 'string' ? 
-      lastMessage.content : 
-      JSON.stringify(lastMessage.content);
-    
-    // Only use template for educational queries
-    const isEducationalQuery = detectEducationalQuery(userMessage);
-    console.log('Message type detection - Educational query:', isEducationalQuery);
-    
-    // Determine if this is a factual query that needs high accuracy
-    const isFactualQuery = userMessage.toLowerCase().includes('what is') || 
-                          userMessage.toLowerCase().includes('define') ||
-                          userMessage.toLowerCase().includes('explain') ||
-                          userMessage.toLowerCase().includes('how does') ||
-                          userMessage.toLowerCase().includes('why does');
-    
-    // Select the most appropriate model based on query type
-    let selectedModelId = modelId;
-    if (isFactualQuery && !isEducationalQuery) {
-      selectedModelId = 'gemini-pro'; // Use pro model for factual queries
-    }
-    
-    // Prepare the model with system instructions
-    const model = genAI.getGenerativeModel({ 
-      model: selectedModelId,
-      generationConfig: {
-        ...generationConfig,
-        // Use lower temperature for factual and educational queries
-        temperature: isFactualQuery || isEducationalQuery ? 0.2 : (generationConfig.temperature || 0.7),
-        // Increase top_k and top_p for more accurate responses
-        topK: isFactualQuery ? 20 : 40,
-        topP: isFactualQuery ? 0.8 : 0.95,
-        // Increase max tokens for more detailed responses
-        maxOutputTokens: isFactualQuery ? 2048 : 1024,
-      }
-    });
-    
-    let response;
-    
-    // Convert messages to the format expected by Gemini API
-    const formattedMessages: Content[] = [];
-    
-    // First message is special - it might have text and image parts
-    const firstMessage = validMessages[0];
-    
-    // Handle multimodal content (message with text and images)
-    if (Array.isArray(firstMessage.content)) {
-      // We have a multimodal message with potentially both text and images
-      const parts: Part[] = [];
-      
-      for (const part of firstMessage.content) {
-          if (part.text) {
-          parts.push({ text: part.text });
-          } else if (part.image_url) {
-          // For inline image data URL
-          if (part.image_url.startsWith('data:')) {
-            const [mimeType, base64Data] = part.image_url.split(',');
-            if (base64Data) {
-              parts.push({
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType.replace('data:', '').split(';')[0]
-                }
-              });
-            }
-          } else if (part.image_url.startsWith('http')) {
-            // For external image URLs - although Gemini API doesn't really support these directly
-            console.warn('External image URLs are not supported by Gemini API');
-      } else {
-            // For base64 data without data URL prefix
-            parts.push({
-              inlineData: {
-                data: part.image_url,
-                mimeType: 'image/jpeg' // Default to JPEG if not specified
-              }
-            });
-          }
-        }
-      }
-      
-      formattedMessages.push({
-        role: firstMessage.role === 'user' ? 'user' : 'model',
-        parts
-      });
-    } else {
-      // Simple text message
-      formattedMessages.push({
-        role: firstMessage.role === 'user' ? 'user' : 'model',
-        parts: [{ text: firstMessage.content }]
-      });
-    }
-    
-    // Add the rest of the messages (which should be text only)
-    for (let i = 1; i < validMessages.length; i++) {
-      const msg = validMessages[i];
-      const content = typeof msg.content === 'string' ? 
-        msg.content : 
-        JSON.stringify(msg.content);
-      
-      formattedMessages.push({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: content }]
-      });
-    }
-    
-    console.log('Formatted messages:', JSON.stringify(formattedMessages.map(m => ({ role: m.role, length: m.parts.length }))));
-    
-    // Generate the content
+
     try {
-      const chat = model.startChat({
-        history: formattedMessages.slice(0, -1),
+      // Safety check - try to handle API version issues by using a direct fetch if the SDK fails
+      const directFetch = async (text: string) => {
+        try {
+          console.log("Using direct API fetch as fallback method with v1 endpoint");
+          // Format the API request
+          const requestBody = {
+            contents: [
+              {
+                parts: [
+                  { text }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 1024
+            }
+          };
+          
+          // Make the API call directly
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestBody)
+            }
+          );
+          
+          if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+          }
+          
+          const responseData = await response.json();
+          const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+          
+          return {
+            role: 'assistant',
+            content: text,
+          };
+        } catch (directError) {
+          console.error("Direct API fetch also failed:", directError);
+          throw directError;
+        }
+      };
+
+      // Determine if this is an educational question that needs the template
+      const lastMessage = messages[messages.length - 1];
+      const userMessage = typeof lastMessage.content === 'string' ? 
+        lastMessage.content : 
+        JSON.stringify(lastMessage.content);
+      
+      // Only use template for educational queries
+      const isEducationalQuery = detectEducationalQuery(userMessage);
+      console.log('Message type detection - Educational query:', isEducationalQuery);
+      
+      // Determine if this is a factual query that needs high accuracy
+      const isFactualQuery = userMessage.toLowerCase().includes('what is') || 
+                            userMessage.toLowerCase().includes('define') ||
+                            userMessage.toLowerCase().includes('explain') ||
+                            userMessage.toLowerCase().includes('how does') ||
+                            userMessage.toLowerCase().includes('why does');
+      
+      // Select the most appropriate model based on query type
+      let selectedModelId = modelId;
+      if (isFactualQuery && !isEducationalQuery) {
+        selectedModelId = 'gemini-pro'; // Use pro model for factual queries
+      }
+      
+      // Prepare the model with system instructions
+      const model = genAI.getGenerativeModel({ 
+        model: selectedModelId,
         generationConfig: {
           ...generationConfig,
-          // Use lower temperature for factual and educational responses
+          // Use lower temperature for factual and educational queries
           temperature: isFactualQuery || isEducationalQuery ? 0.2 : (generationConfig.temperature || 0.7),
           // Increase top_k and top_p for more accurate responses
           topK: isFactualQuery ? 20 : 40,
@@ -315,18 +283,104 @@ export const generateResponse = async (
         }
       });
       
-      const lastMessageContent = formattedMessages[formattedMessages.length - 1].parts[0].text || '';
+      let response;
       
-      // Only use template for educational queries that don't include images
-      let promptWithInstructions = lastMessageContent;
+      // Convert messages to the format expected by Gemini API
+      const formattedMessages: Content[] = [];
       
-      if (isEducationalQuery) {
-        // Process the query to determine subject and topic
-        const { subject, topic } = detectSubjectAndTopic(userMessage);
-        const question = extractQuestion(userMessage);
+      // First message is special - it might have text and image parts
+      const firstMessage = validMessages[0];
+      
+      // Handle multimodal content (message with text and images)
+      if (Array.isArray(firstMessage.content)) {
+        // We have a multimodal message with potentially both text and images
+        const parts: Part[] = [];
         
-        // Only apply template for educational queries
-        promptWithInstructions = `${lastMessageContent}
+        for (const part of firstMessage.content) {
+            if (part.text) {
+            parts.push({ text: part.text });
+            } else if (part.image_url) {
+            // For inline image data URL
+            if (part.image_url.startsWith('data:')) {
+              const [mimeType, base64Data] = part.image_url.split(',');
+              if (base64Data) {
+                parts.push({
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType.replace('data:', '').split(';')[0]
+                  }
+                });
+              }
+            } else if (part.image_url.startsWith('http')) {
+              // For external image URLs - although Gemini API doesn't really support these directly
+              console.warn('External image URLs are not supported by Gemini API');
+        } else {
+              // For base64 data without data URL prefix
+              parts.push({
+                inlineData: {
+                  data: part.image_url,
+                  mimeType: 'image/jpeg' // Default to JPEG if not specified
+                }
+              });
+            }
+          }
+        }
+        
+        formattedMessages.push({
+          role: firstMessage.role === 'user' ? 'user' : 'model',
+          parts
+        });
+      } else {
+        // Simple text message
+        formattedMessages.push({
+          role: firstMessage.role === 'user' ? 'user' : 'model',
+          parts: [{ text: firstMessage.content }]
+        });
+      }
+      
+      // Add the rest of the messages (which should be text only)
+      for (let i = 1; i < validMessages.length; i++) {
+        const msg = validMessages[i];
+        const content = typeof msg.content === 'string' ? 
+          msg.content : 
+          JSON.stringify(msg.content);
+        
+        formattedMessages.push({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: content }]
+        });
+      }
+      
+      console.log('Formatted messages:', JSON.stringify(formattedMessages.map(m => ({ role: m.role, length: m.parts.length }))));
+      
+      // Generate the content
+      try {
+        const chat = model.startChat({
+          history: formattedMessages.slice(0, -1),
+          generationConfig: {
+            ...generationConfig,
+            // Use lower temperature for factual and educational responses
+            temperature: isFactualQuery || isEducationalQuery ? 0.2 : (generationConfig.temperature || 0.7),
+            // Increase top_k and top_p for more accurate responses
+            topK: isFactualQuery ? 20 : 40,
+            topP: isFactualQuery ? 0.8 : 0.95,
+            // Increase max tokens for more detailed responses
+            maxOutputTokens: isFactualQuery ? 2048 : 1024,
+          }
+        });
+        
+        const lastMessageContent = formattedMessages[formattedMessages.length - 1].parts[0].text || '';
+        
+        // Only use template for educational queries that don't include images
+        let promptWithInstructions = lastMessageContent;
+        
+        if (isEducationalQuery) {
+          // Process the query to determine subject and topic
+          const { subject, topic } = detectSubjectAndTopic(userMessage);
+          const question = extractQuestion(userMessage);
+          
+          // Only apply template for educational queries
+          promptWithInstructions = `${lastMessageContent}
 
 THIS IS A VERY IMPORTANT SYSTEM INSTRUCTION! 
 
@@ -350,91 +404,104 @@ Step 2: [Second step]
 DO NOT ADD ANY TEXT BEFORE OR AFTER THIS TEMPLATE.
 DO NOT CHANGE THE FORMATTING OR STRUCTURE.
 YOU MUST FOLLOW THIS TEMPLATE EXACTLY!`;
-      } else if (isFactualQuery) {
-        // Add instructions for factual queries to ensure accuracy
-        promptWithInstructions = `${lastMessageContent}
+        } else if (isFactualQuery) {
+          // Add instructions for factual queries to ensure accuracy
+          promptWithInstructions = `${lastMessageContent}
 
 Please provide a clear, accurate, and well-structured response. Include relevant details and examples where appropriate. If you're unsure about any part of the answer, please say so explicitly.`;
-      }
-      
-      console.log('Sending final prompt to model:', promptWithInstructions.substring(0, 100) + '...');
-      
-      try {
-        // Get the response
-        response = await chat.sendMessage(promptWithInstructions);
-        console.log('Response received, text length:', response.response.text().length);
-      } catch (messageError) {
-        console.error('Error sending message to model:', messageError);
+        }
         
-        // Try a simpler approach without history for image messages
-        if (Array.isArray(firstMessage.content) && 
-            firstMessage.content.some(part => part.image_url)) {
-          console.log('Attempting direct generation for image message without chat history');
-          try {
-            const result = await model.generateContent(formattedMessages[formattedMessages.length - 1].parts);
+        console.log('Sending final prompt to model:', promptWithInstructions.substring(0, 100) + '...');
+        
+        try {
+          // Get the response
+          response = await chat.sendMessage(promptWithInstructions);
+          console.log('Response received, text length:', response.response.text().length);
+        } catch (messageError) {
+          console.error('Error sending message to model:', messageError);
+          
+          // Try a simpler approach without history for image messages
+          if (Array.isArray(firstMessage.content) && 
+              firstMessage.content.some(part => part.image_url)) {
+            console.log('Attempting direct generation for image message without chat history');
+            try {
+              const result = await model.generateContent(formattedMessages[formattedMessages.length - 1].parts);
+              return {
+                role: 'assistant',
+                content: result.response.text(),
+              };
+            } catch (directError) {
+              console.error('Direct generation also failed:', directError);
+              throw directError;
+            }
+          } else {
+            throw messageError;
+          }
+        }
+        
+        // Only check template for educational queries that don't include images
+        if (isEducationalQuery) {
+          const responseText = response.response.text();
+          
+          // Strict check for template compliance
+          if (!responseText.includes('##') || 
+              !responseText.includes('**Question:**') || 
+              !responseText.includes('**Solution:**') || 
+              !responseText.includes('**💡 Tricks & Tips:**')) {
+            console.log('Response does not follow template, forcing reformatting...');
+            
+            const { subject, topic } = detectSubjectAndTopic(userMessage);
+            const question = extractQuestion(userMessage);
+            
             return {
               role: 'assistant',
-              content: result.response.text(),
+              content: createResponseTemplate(subject, topic, question, responseText)
             };
-          } catch (directError) {
-            console.error('Direct generation also failed:', directError);
-            throw directError;
           }
-        } else {
-          throw messageError;
         }
-      }
-      
-      // Only check template for educational queries that don't include images
-      if (isEducationalQuery) {
-        const responseText = response.response.text();
         
-        // Strict check for template compliance
-        if (!responseText.includes('##') || 
-            !responseText.includes('**Question:**') || 
-            !responseText.includes('**Solution:**') || 
-            !responseText.includes('**💡 Tricks & Tips:**')) {
-          console.log('Response does not follow template, forcing reformatting...');
-          
+        return {
+          role: 'assistant',
+          content: response.response.text(),
+        };
+      } catch (error) {
+        console.error('Error generating content:', error);
+        
+        // Only provide template response for educational queries
+        const isEducational = detectEducationalQuery(userMessage);
+        
+        if (isEducational) {
           const { subject, topic } = detectSubjectAndTopic(userMessage);
           const question = extractQuestion(userMessage);
           
           return {
             role: 'assistant',
-            content: createResponseTemplate(subject, topic, question, responseText)
+            content: createResponseTemplate(
+              subject, 
+              topic, 
+              question, 
+              'I encountered an error processing your request, but here is some general guidance for this type of question.'
+            ),
+          };
+        } else {
+          return {
+            role: 'assistant',
+            content: 'I encountered an error while generating a response. Please try again or rephrase your question.',
           };
         }
       }
-      
-      return {
-        role: 'assistant',
-        content: response.response.text(),
-      };
     } catch (error) {
-      console.error('Error generating content:', error);
+      console.error("Standard API call failed, trying direct fetch fallback:", error);
+      const lastMessageText = typeof lastMessage.content === 'string' ? 
+        lastMessage.content : 
+        JSON.stringify(lastMessage.content);
       
-      // Only provide template response for educational queries
-      const isEducational = detectEducationalQuery(userMessage);
-      
-      if (isEducational) {
-        const { subject, topic } = detectSubjectAndTopic(userMessage);
-        const question = extractQuestion(userMessage);
-        
-        return {
-          role: 'assistant',
-          content: createResponseTemplate(
-            subject, 
-            topic, 
-            question, 
-            'I encountered an error processing your request, but here is some general guidance for this type of question.'
-          ),
-        };
-      } else {
-        return {
-          role: 'assistant',
-          content: 'I encountered an error while generating a response. Please try again or rephrase your question.',
-        };
+      if ((error as any)?.message?.includes('v1beta')) {
+        console.error('API VERSION ERROR: The SDK is trying to use v1beta which is deprecated. Using direct v1 API call as fallback.');
+        return await directFetch(lastMessageText);
       }
+      
+      return await directFetch(lastMessageText);
     }
   } catch (error) {
     console.error('Error in generateResponse:', error);

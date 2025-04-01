@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, Check, Clock, Plus, Trash2, AlertCircle, CheckCircle2, X, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Todo } from '../services/supabase';
 import { format, isPast, isFuture, isToday } from 'date-fns';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAPAnimations } from '../hooks/useGSAPAnimations';
+
+// Register GSAP plugins
+gsap.registerPlugin(ScrollTrigger);
 
 // Priority options with their styles
 const PRIORITY_OPTIONS = [
@@ -51,10 +57,123 @@ const TodoPage: React.FC = () => {
   
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [sortBy, setSortBy] = useState<'priority' | 'due_date' | 'created_at'>('created_at');
+
+  // Animation refs
+  const headerRef = useRef<HTMLDivElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const todoListRef = useRef<HTMLDivElement>(null);
+  const todoFormRef = useRef<HTMLFormElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  
+  // Get animation hooks
+  const { staggerItems } = useGSAPAnimations();
+  
+  // Filter and sort todos based on current filters
+  const filteredTodos = todos
+    .filter(todo => {
+      // Status filter
+      if (filter === 'active' && todo.completed) return false;
+      if (filter === 'completed' && !todo.completed) return false;
+      
+      // Priority filter
+      if (priorityFilter !== 'all' && todo.priority !== priorityFilter) return false;
+      
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by selected field
+      if (sortBy === 'priority') {
+        const priorityValues = { 'low': 1, 'medium': 2, 'high': 3 };
+        const aValue = priorityValues[a.priority] || 0;
+        const bValue = priorityValues[b.priority] || 0;
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      } else if (sortBy === 'due_date') {
+        const aDate = a.due_date ? new Date(a.due_date).getTime() : 0;
+        const bDate = b.due_date ? new Date(b.due_date).getTime() : 0;
+        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
+      } else {
+        const aDate = new Date(a.created_at).getTime();
+        const bDate = new Date(b.created_at).getTime();
+        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
+      }
+    });
   
   useEffect(() => {
     loadTodos();
   }, [loadTodos]);
+  
+  // Initial page load animations
+  useEffect(() => {
+    // Header animation
+    gsap.fromTo(
+      headerRef.current,
+      { y: -50, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }
+    );
+    
+    // Filters animation
+    gsap.fromTo(
+      filtersRef.current,
+      { y: -20, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.6, delay: 0.2, ease: "power2.out" }
+    );
+    
+    // Add button animation
+    gsap.fromTo(
+      addButtonRef.current,
+      { scale: 0, opacity: 0 },
+      { 
+        scale: 1, 
+        opacity: 1, 
+        duration: 0.5, 
+        delay: 0.5, 
+        ease: "back.out(1.7)" 
+      }
+    );
+    
+    // Animate background gradient
+    gsap.fromTo(
+      ".bg-gradient",
+      { opacity: 0 },
+      { opacity: 0.9, duration: 1.2, ease: "power2.out" }
+    );
+  }, []);
+  
+  // Animate todo list when it changes
+  useEffect(() => {
+    if (todoListRef.current) {
+      const todoItems = todoListRef.current.querySelectorAll('.todo-item:not(.animated)');
+      
+      if (todoItems.length > 0) {
+        gsap.fromTo(
+          todoItems,
+          { y: 20, opacity: 0 },
+          { 
+            y: 0, 
+            opacity: 1, 
+            duration: 0.4, 
+            stagger: 0.05,
+            ease: "power2.out",
+            onComplete: () => {
+              // Mark as animated
+              todoItems.forEach(el => el.classList.add('animated'));
+            }
+          }
+        );
+      }
+    }
+  }, [filteredTodos]);
+  
+  // Animate todo form when adding a new todo
+  useEffect(() => {
+    if (isAddingTodo && todoFormRef.current) {
+      gsap.fromTo(
+        todoFormRef.current,
+        { y: -20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.3, ease: "power2.out" }
+      );
+    }
+  }, [isAddingTodo]);
   
   // Handle new todo submission
   const handleAddTodo = async (e: React.FormEvent) => {
@@ -77,14 +196,37 @@ const TodoPage: React.FC = () => {
     }
   };
   
-  // Handle todo completion toggle
-  const handleToggleComplete = async (todoId: string, currentStatus: boolean) => {
-    await updateTodo(todoId, { completed: !currentStatus });
+  // Handle todo completion toggle with animation
+  const handleToggleComplete = async (todoId: string, currentStatus: boolean, element: HTMLElement) => {
+    // Add completion animation
+    if (!currentStatus) {
+      gsap.to(element, {
+        backgroundColor: 'rgba(209, 250, 229, 0.3)',
+        duration: 0.3,
+        onComplete: () => {
+          updateTodo(todoId, { completed: !currentStatus });
+        }
+      });
+    } else {
+      updateTodo(todoId, { completed: !currentStatus });
+    }
   };
   
-  // Handle todo deletion
-  const handleDeleteTodo = async (todoId: string) => {
-    await deleteTodo(todoId);
+  // Handle todo deletion with animation
+  const handleDeleteTodo = async (todoId: string, element: HTMLElement) => {
+    // Animate before deletion
+    gsap.to(element, {
+      x: 50,
+      opacity: 0,
+      height: 0,
+      marginBottom: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      duration: 0.3,
+      onComplete: () => {
+        deleteTodo(todoId);
+      }
+    });
   };
   
   // Start editing a todo
@@ -122,36 +264,6 @@ const TodoPage: React.FC = () => {
     }
   };
   
-  // Filter and sort todos based on current filters
-  const filteredTodos = todos
-    .filter(todo => {
-      // Status filter
-      if (filter === 'active' && todo.completed) return false;
-      if (filter === 'completed' && !todo.completed) return false;
-      
-      // Priority filter
-      if (priorityFilter !== 'all' && todo.priority !== priorityFilter) return false;
-      
-      return true;
-    })
-    .sort((a, b) => {
-      // Sort by selected field
-      if (sortBy === 'priority') {
-        const priorityValues = { 'low': 1, 'medium': 2, 'high': 3 };
-        const aValue = priorityValues[a.priority] || 0;
-        const bValue = priorityValues[b.priority] || 0;
-        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      } else if (sortBy === 'due_date') {
-        const aDate = a.due_date ? new Date(a.due_date).getTime() : 0;
-        const bDate = b.due_date ? new Date(b.due_date).getTime() : 0;
-        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
-      } else {
-        const aDate = new Date(a.created_at).getTime();
-        const bDate = new Date(b.created_at).getTime();
-        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
-      }
-    });
-  
   // Format date for display
   const formatDueDate = (dateString: string | null | undefined) => {
     if (!dateString) return '';
@@ -181,11 +293,11 @@ const TodoPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Background gradient */}
-      <div className="absolute top-0 left-0 right-0 h-48 bg-gradient-to-r from-purple-500 to-indigo-600 opacity-90 -z-10"></div>
+      <div className="bg-gradient absolute top-0 left-0 right-0 h-48 bg-gradient-to-r from-purple-500 to-indigo-600 opacity-0 -z-10"></div>
       <div className="absolute top-0 left-0 right-0 h-48 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-30 -z-5"></div>
       
       {/* Header */}
-      <div className="backdrop-blur-sm bg-white/80 shadow-sm z-50 sticky top-0">
+      <div ref={headerRef} className="backdrop-blur-sm bg-white/80 shadow-sm z-50 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
@@ -199,7 +311,7 @@ const TodoPage: React.FC = () => {
       </div>
       
       {/* Filters */}
-      <div className="backdrop-blur-sm bg-white/80 border-b shadow-sm">
+      <div ref={filtersRef} className="backdrop-blur-sm bg-white/80 border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap py-3 gap-3">
             <div className="flex space-x-2 px-2 py-1 bg-white/80 rounded-lg border border-gray-200 shadow-sm">
@@ -305,45 +417,39 @@ const TodoPage: React.FC = () => {
           </button>
         ) : (
           <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 mb-6 transform transition-all">
-            <form onSubmit={handleAddTodo}>
+            <form 
+              ref={todoFormRef}
+              onSubmit={handleAddTodo}
+              className="flex flex-col sm:flex-row gap-3"
+            >
               <input
                 type="text"
                 placeholder="What needs to be done?"
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 value={newTodoTitle}
                 onChange={(e) => setNewTodoTitle(e.target.value)}
                 autoFocus
               />
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Priority
-                  </label>
-                  <select
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    value={newTodoPriority}
-                    onChange={(e) => setNewTodoPriority(e.target.value as 'low' | 'medium' | 'high')}
-                  >
-                    {PRIORITY_OPTIONS.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="flex space-x-2">
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  value={newTodoPriority}
+                  onChange={(e) => setNewTodoPriority(e.target.value as 'low' | 'medium' | 'high')}
+                >
+                  {PRIORITY_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Due Date (Optional)
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    value={newTodoDueDate}
-                    onChange={(e) => setNewTodoDueDate(e.target.value)}
-                  />
-                </div>
+                <input
+                  type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  value={newTodoDueDate}
+                  onChange={(e) => setNewTodoDueDate(e.target.value)}
+                />
               </div>
               
               <div className="flex justify-end space-x-2">
@@ -367,7 +473,7 @@ const TodoPage: React.FC = () => {
         )}
         
         {/* Todo List */}
-        <div className="space-y-4">
+        <div ref={todoListRef} className="space-y-4">
           {filteredTodos.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8 text-center text-gray-500">
               {filter === 'all' && priorityFilter === 'all' 
@@ -462,7 +568,10 @@ const TodoPage: React.FC = () => {
                           ? 'bg-gradient-to-r from-green-400 to-green-500 border-green-500 text-white shadow-sm' 
                           : 'bg-white border-gray-300 hover:border-indigo-500 hover:shadow-sm transition-all'
                       }`}
-                      onClick={() => handleToggleComplete(todo.id, todo.completed)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleComplete(todo.id, todo.completed, e.currentTarget);
+                      }}
                     >
                       {todo.completed && <Check className="h-5 w-5 mx-auto" />}
                     </button>
@@ -502,13 +611,19 @@ const TodoPage: React.FC = () => {
                     <div className="flex-shrink-0 flex space-x-1 opacity-70 group-hover:opacity-100 transition-opacity">
                       <button
                         className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
-                        onClick={() => handleStartEdit(todo)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartEdit(todo);
+                        }}
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
                         className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                        onClick={() => handleDeleteTodo(todo.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTodo(todo.id, e.currentTarget);
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

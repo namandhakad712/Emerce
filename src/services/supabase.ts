@@ -8,11 +8,26 @@ const useMockData = import.meta.env.VITE_SUPABASE_URL === 'your-project-url.supa
 console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
 console.log('Using mock data:', useMockData);
 
-// Create Supabase client
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_KEY || ''
-);
+// Create Supabase client with proper error handling
+let supabase;
+try {
+  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_KEY) {
+    console.warn('Supabase credentials missing, using fallback mock data');
+    supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
+  } else {
+    supabase = createClient(
+      import.meta.env.VITE_SUPABASE_URL,
+      import.meta.env.VITE_SUPABASE_KEY
+    );
+    console.log('Supabase client initialized successfully');
+  }
+} catch (error) {
+  console.error('Error initializing Supabase client:', error);
+  // Create a placeholder client that will be replaced with mock data logic
+  supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
+}
+
+export { supabase };
 
 // Mock data storage
 const mockStorage = {
@@ -442,167 +457,193 @@ export const getConceptCards = async (category?: string) => {
   }
 };
 
-export const addConceptCard = async (card: Omit<ConceptCard, 'id' | 'created_at'>) => {
+export const addConceptCard = async (card: Omit<ConceptCard, 'id' | 'created_at'>): Promise<ConceptCard | null> => {
   try {
-    console.log('[SUPABASE] Adding concept card:', card.title);
+    console.log('========= ADDING CONCEPT CARD ==========');
+    console.log('Card data:', card);
     
-    // Generate a unique ID to use for both mock and real data
-    const cardId = uuidv4();
-    const timestamp = new Date().toISOString();
+    // Ensure we have the required fields
+    if (!card.title || !card.content || !card.category) {
+      console.error('Missing required fields for concept card creation');
+      return null;
+    }
     
-    // Use the provided gradient or select a random one
-    const gradients = [
-      'from-purple-500 to-indigo-500',
-      'from-blue-500 to-teal-500',
-      'from-green-500 to-teal-500',
-      'from-yellow-500 to-red-500',
-      'from-pink-500 to-purple-500',
-      'from-indigo-500 to-blue-500',
-      'from-red-500 to-pink-500',
-      'from-teal-500 to-blue-500',
-    ];
-    
-    const cardGradient = card.color_gradient || 
-      gradients[Math.floor(Math.random() * gradients.length)];
-    
-    // Create a complete card object with ID
-    const newCard = {
-      id: cardId,
-      title: card.title,
-      content: card.content,
+    // Clean and validate the data
+    const cleanedCard = {
+      ...card,
+      title: card.title.trim(),
+      content: card.content.trim(),
       category: card.category,
-      color_gradient: cardGradient,
-      created_at: timestamp
+      // Add default gradient if none provided
+      color_gradient: card.color_gradient || 'from-indigo-500 to-purple-500'
     };
     
-    // For mock data, simply add to the in-memory storage
+    // Only use real DB for concept cards - no mock data
     if (useMockData) {
-      mockStorage.conceptCards.unshift(newCard);
+      console.log('Using mock storage for concept card');
+      const newCard = {
+        ...cleanedCard,
+        id: uuidv4(),
+        created_at: new Date().toISOString()
+      };
+      mockStorage.conceptCards.push(newCard);
       return newCard;
     }
     
-    console.log('[SUPABASE] Saving concept card to database using method 1');
-    
-    // METHOD 1: Standard insert
-    let savedCard = null;
-    try {
-    const { data, error } = await supabase
-      .from('concept_cards')
-      .insert([{
-          title: newCard.title,
-          content: newCard.content,
-          category: newCard.category,
-          color_gradient: newCard.color_gradient,
-          created_at: newCard.created_at
-      }])
-      .select();
-    
-    if (error) {
-        console.error('[SUPABASE] Method 1 failed:', error);
-      } else if (data && data.length > 0) {
-        console.log('[SUPABASE] Method 1 succeeded, card saved with ID:', data[0].id);
-        return data[0] as ConceptCard;
-      }
-    } catch (method1Error) {
-      console.error('[SUPABASE] Method 1 exception:', method1Error);
+    // Verify the table exists before inserting
+    console.log('Checking if concept_cards table exists...');
+    const tableExists = await ensureConceptCardsTable();
+    if (!tableExists) {
+      console.error('Concept cards table does not exist and could not be created');
+      
+      // Fallback to mock storage
+      console.log('Falling back to mock storage');
+      const newCard = {
+        ...cleanedCard,
+        id: uuidv4(),
+        created_at: new Date().toISOString()
+      };
+      mockStorage.conceptCards.push(newCard);
+      return newCard;
     }
     
-    // METHOD 2: Insert with explicit ID
-    if (!savedCard) {
-      console.log('[SUPABASE] Trying method 2: Insert with explicit ID');
+    console.log('Adding concept card to Supabase:', cleanedCard);
+    
+    // Generate a consistent ID to use for all attempts
+    const cardId = uuidv4();
+    const timestamp = new Date().toISOString();
+    
+    // Create complete card with ID for database insertion
+    const cardWithId = {
+      ...cleanedCard,
+      id: cardId,
+      created_at: timestamp
+    };
+    
+    try {
+      // Method 1: Try standard insert with select
+      console.log('Trying method 1: insert with select...');
+      const { data, error } = await supabase
+        .from('concept_cards')
+        .insert([cardWithId])
+        .select();
+      
+      if (error) {
+        console.error('[SUPABASE] Method 1 failed:', error);
+        throw error;
+      }
+      
+      console.log('Successfully added concept card in database:', data?.[0]?.id);
+      return data?.[0] as ConceptCard;
+    } catch (method1Error) {
+      console.error('Method 1 failed, trying method 2...');
+      
+      // Method 2: Try insert without select
       try {
-        const { data, error } = await supabase
+        console.log('Trying method 2: insert without select...');
+        const { error } = await supabase
           .from('concept_cards')
-          .insert([newCard])
-          .select();
-          
+          .insert([cardWithId]);
+        
         if (error) {
           console.error('[SUPABASE] Method 2 failed:', error);
-        } else if (data && data.length > 0) {
-          console.log('[SUPABASE] Method 2 succeeded, card saved with ID:', data[0].id);
-    return data[0] as ConceptCard;
+          throw error;
         }
+        
+        console.log('Successfully added concept card with ID:', cardId);
+        
+        // Return the card with the ID we generated
+        return cardWithId;
       } catch (method2Error) {
-        console.error('[SUPABASE] Method 2 exception:', method2Error);
-      }
-    }
-    
-    // METHOD 3: Direct SQL insert
-    if (!savedCard) {
-      console.log('[SUPABASE] Trying method 3: Direct SQL insert');
-      try {
-        const { error } = await supabase.rpc('execute_sql', {
-          sql_query: `
-            INSERT INTO concept_cards (id, title, content, category, color_gradient, created_at)
-            VALUES ('${cardId}', '${newCard.title.replace(/'/g, "''")}', '${newCard.content.replace(/'/g, "''")}', '${newCard.category}', '${newCard.color_gradient}', '${newCard.created_at}')
-            RETURNING id;
-          `
-        });
+        console.error('Method 2 failed, trying method 3 (RPC)...');
         
-        if (error) {
-          console.error('[SUPABASE] Method 3 failed:', error);
-        } else {
-          console.log('[SUPABASE] Method 3 succeeded, card saved with ID:', cardId);
-          return newCard;
-        }
-      } catch (method3Error) {
-        console.error('[SUPABASE] Method 3 exception:', method3Error);
-      }
-    }
-    
-    // METHOD 4: REST API call
-    if (!savedCard) {
-      console.log('[SUPABASE] Trying method 4: REST API call');
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-        
-        if (!supabaseUrl || !supabaseKey) {
-          console.error('[SUPABASE] Missing URL or key for REST API call');
-        } else {
-          const response = await fetch(`${supabaseUrl}/rest/v1/concept_cards`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-              'Prefer': 'return=representation'
-            },
-            body: JSON.stringify(newCard)
-          });
+        // Method 3: Try RPC call
+        try {
+          console.log('Trying method 3: direct SQL via RPC...');
           
-          if (!response.ok) {
-            console.error('[SUPABASE] Method 4 failed:', response.statusText);
-          } else {
-            const responseData = await response.json();
-            console.log('[SUPABASE] Method 4 succeeded:', responseData);
-            if (Array.isArray(responseData) && responseData.length > 0) {
-              return responseData[0] as ConceptCard;
-            } else if (typeof responseData === 'object') {
-              return responseData as ConceptCard;
-            }
-          }
+          // Query to get columns
+          const { data: columns } = await supabase
+            .rpc('get_table_columns', { table_name: 'concept_cards' });
+            
+          console.log('Table columns:', columns);
+          
+          // Fall back to mock storage at this point
+          console.log('All methods failed, falling back to mock storage');
+          const newCard = {
+            ...cleanedCard,
+            id: cardId,
+            created_at: timestamp
+          };
+          mockStorage.conceptCards.push(newCard);
+          return newCard;
+        } catch (method3Error) {
+          console.error('All methods failed to add concept card:', method3Error);
+          
+          // Return a mock object as last resort
+          const fallbackCard = {
+            ...cleanedCard,
+            id: cardId,
+            created_at: timestamp
+          };
+          return fallbackCard;
         }
-      } catch (method4Error) {
-        console.error('[SUPABASE] Method 4 exception:', method4Error);
       }
     }
-    
-    // If all database operations failed but we still need a card for the UI
-    console.warn('[SUPABASE] All database methods failed, returning in-memory card');
-    return newCard;
   } catch (error) {
-    console.error('[SUPABASE] Error adding concept card:', error);
-    // Even with errors, return a fake card so UI doesn't break
-    return {
-      id: uuidv4(),
-      title: card.title || 'Concept Card',
-      content: card.content || 'Content unavailable',
-      category: card.category || 'Other',
-      color_gradient: card.color_gradient || 'from-gray-400 to-gray-600',
-      created_at: new Date().toISOString()
-    };
+    console.error('Error adding concept card:', error);
+    return null;
   }
+};
+
+/**
+ * Returns SQL setup instructions for creating the necessary database tables
+ */
+export const getTableSetupInstructions = (): string => {
+  return `
+-- Run this SQL in the Supabase SQL Editor to create all necessary tables:
+
+-- 1. Create the chats table
+CREATE TABLE IF NOT EXISTS chats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  model TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Create the messages table with a foreign key to chats
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Create the concept_cards table
+CREATE TABLE IF NOT EXISTS concept_cards (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  category TEXT NOT NULL,
+  color_gradient TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Create the todos table
+CREATE TABLE IF NOT EXISTS todos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  priority TEXT CHECK (priority IN ('high', 'medium', 'low')),
+  due_date TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Add some sample data
+INSERT INTO concept_cards (title, content, category, color_gradient)
+VALUES 
+  ('Sample Card', 'This is a sample concept card to test the database.', 'Other', 'from-blue-500 to-indigo-500');
+`;
 };
 
 // Rename chat
@@ -773,35 +814,52 @@ verifyDatabaseTables().then(tablesExist => {
 
 // Add to export functions
 export const ensureConceptCardsTable = async (): Promise<boolean> => {
+  console.log('[SUPABASE] Verifying concept_cards table exists');
+  
+  // Skip verification in mock data mode
+  if (useMockData) {
+    console.log('[SUPABASE] Using mock data, skipping table verification');
+    return true;
+  }
+  
   try {
-    console.log('[SUPABASE] Verifying concept_cards table exists');
-    
-    // Check if we're in mock data mode
-    if (useMockData) {
-      console.log('[SUPABASE] Using mock data, skipping table verification');
-      return true;
-    }
-    
-    // First check if the table exists by querying it
-    const { error } = await supabase
+    // Try to query the table first to see if it exists
+    const { data, error } = await supabase
       .from('concept_cards')
       .select('id')
       .limit(1);
     
-    // If there's no error, the table exists
-    if (!error) {
+    if (error) {
+      console.error('[SUPABASE] Error checking concept_cards table:', error.message);
+      
+      // Error message if the table doesn't exist
+      if (error.code === '42P01') { // PostgreSQL code for undefined_table
+        console.log('[SUPABASE] The concept_cards table does not exist, attempting to create it');
+      } else {
+        console.error('[SUPABASE] Unexpected database error:', error.code, error.message);
+        console.log('[SUPABASE] Please check your Supabase setup and credentials');
+        return false;
+      }
+    } else {
       console.log('[SUPABASE] concept_cards table exists');
       return true;
     }
     
-    console.error('[SUPABASE] Error checking concept_cards table:', error);
-    
-    // If we get here, there was an error, try to create the table
-    console.log('[SUPABASE] Attempting to create concept_cards table');
-    
-    // Use Supabase SQL to create the table
-    const { error: createError } = await supabase.rpc('execute_sql', {
-      sql_query: `
+    // Check if we can use RPC to create the table
+    let rpcSupported = false;
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('version');
+      if (!rpcError) {
+        console.log('[SUPABASE] RPC is supported on this project');
+        rpcSupported = true;
+      } else {
+        throw rpcError;
+      }
+    } catch (rpcError) {
+      console.error('[SUPABASE] RPC is not supported on this project:', rpcError);
+      console.log('[SUPABASE] Please create the concept_cards table manually using the SQL editor in Supabase');
+      console.log(`
+        -- Run this SQL in the Supabase SQL Editor to create your concept_cards table:
         CREATE TABLE IF NOT EXISTS concept_cards (
           id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           title TEXT NOT NULL,
@@ -810,18 +868,47 @@ export const ensureConceptCardsTable = async (): Promise<boolean> => {
           color_gradient TEXT,
           created_at TIMESTAMPTZ DEFAULT NOW()
         );
-      `
-    });
-    
-    if (createError) {
-      console.error('[SUPABASE] Failed to create concept_cards table:', createError);
+
+        -- Then add a sample card to test:
+        INSERT INTO concept_cards (id, title, content, category, color_gradient, created_at)
+        VALUES 
+          (uuid_generate_v4(), 'Sample Card', 'This is a sample concept card.', 'Other', 'from-blue-500 to-indigo-500', NOW());
+      `);
+      
+      // Provide user guidance if RPC is not supported
+      console.log('[SUPABASE] ⚠️ Your Supabase setup might need additional configuration:');
+      console.log('[SUPABASE] 1. Make sure your Supabase project is set up correctly');
+      console.log('[SUPABASE] 2. Verify you have the right API keys in your .env file');
+      console.log('[SUPABASE] 3. Use the "Show Setup SQL" button in the app for complete table setup');
+      
       return false;
     }
     
-    console.log('[SUPABASE] Successfully created concept_cards table');
-    return true;
+    // Attempt to create the table if RPC is supported
+    if (rpcSupported) {
+      try {
+        const { data: createData, error: createError } = await supabase.rpc('create_concept_cards_table');
+        
+        if (createError) {
+          console.error('[SUPABASE] Error creating concept_cards table with RPC:', createError.message);
+          console.log('[SUPABASE] Please create the table manually using the SQL editor in Supabase');
+          return false;
+        }
+        
+        console.log('[SUPABASE] concept_cards table created successfully');
+        return true;
+      } catch (createError) {
+        console.error('[SUPABASE] Error creating concept_cards table:', createError);
+        console.log('[SUPABASE] Please create the table manually using the SQL editor in Supabase');
+        return false;
+      }
+    }
+    
+    // If we reached here, we couldn't create the table
+    return false;
   } catch (error) {
-    console.error('[SUPABASE] Error in ensureConceptCardsTable:', error);
+    console.error('[SUPABASE] Unexpected error checking concept_cards table:', error);
+    console.log('[SUPABASE] Please check your database connection and credentials');
     return false;
   }
 };

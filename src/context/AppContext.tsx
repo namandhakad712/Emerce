@@ -615,25 +615,29 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
       } catch (err) {
         console.error('Error generating AI response:', err);
         
-        // Add an error message
-        const errorMessage: supabaseService.ChatMessage = {
-          id: uuidv4(),
-          role: 'assistant',
-          content: 'I apologize, but I encountered an error processing your request. Please try again.',
-          chat_id: chatIdToUse,
-          created_at: new Date().toISOString()
-        };
+        // Add an error message using our helper function
+        const errorType = err instanceof Error && err.message.includes('database') ? 'database' : 
+                         (err instanceof Error && err.message.includes('Google') ? 'gemini' : 'general');
         
-        // Add error message to state
-        setMessages(prev => [...prev, errorMessage]);
-        
-        // Save error message to database
-        await supabaseService.addChatMessage(errorMessage);
+        addErrorMessageToChat(
+          chatIdToUse, 
+          errorType, 
+          err instanceof Error ? err.message : 'Unknown error'
+        );
       }
     } catch (err) {
       console.error('Error in sendMessage:', err);
-      } finally {
-        setIsProcessing(false);
+      
+      // Add a general error message if we have a chat ID
+      if (currentChatId) {
+        addErrorMessageToChat(
+          currentChatId, 
+          'general', 
+          err instanceof Error ? err.message : 'Unknown error in message processing'
+        );
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -774,6 +778,10 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
       }
     } catch (error) {
       console.error('Error loading concept cards:', error);
+      // Only add error message if we have a current chat
+      if (currentChatId) {
+        addErrorMessageToChat(currentChatId, 'database', error instanceof Error ? error.message : 'Unknown database error');
+      }
     }
   };
 
@@ -1336,6 +1344,92 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
       console.error('Error deleting todo:', error);
       return false;
     }
+  };
+
+  // Add an error message
+  const addErrorMessageToChat = (chatId: string, errorType: 'database' | 'gemini' | 'general', details?: string) => {
+    const baseErrorMessage = {
+      id: uuidv4(),
+      role: 'assistant' as const,
+      chat_id: chatId,
+      created_at: new Date().toISOString(),
+      content: ''
+    };
+
+    let content = '';
+    
+    switch (errorType) {
+      case 'database':
+        content = `
+## Database Connection Error
+
+I'm having trouble connecting to the database. This might be because:
+
+1. The Supabase tables haven't been created yet
+2. Your Supabase credentials might be incorrect
+3. There might be a permission issue with your database
+
+### How to fix this:
+- Check your environment variables for SUPABASE_URL and SUPABASE_ANON_KEY
+- Make sure your Supabase project is properly set up
+- Try clicking the "Show Setup SQL" button at the top of the page
+- Follow the instructions to create the necessary tables
+
+${details ? `\n**Error details:** ${details}` : ''}
+
+If the problem persists, you can continue using the application with mock data.
+`;
+        break;
+        
+      case 'gemini':
+        content = `
+## AI Model Connection Error
+
+I'm having trouble connecting to the Gemini AI service. This might be because:
+
+1. Your Google API key might be incorrect or has reached its quota limit
+2. There might be network connectivity issues 
+3. The Gemini service might be temporarily unavailable
+
+### How to fix this:
+- Check your environment variable for GOOGLE_API_KEY
+- Verify your API key in the Google Cloud Console
+- Try again in a few minutes
+
+${details ? `\n**Error details:** ${details}` : ''}
+
+If the problem persists, some features like concept card generation might not work properly.
+`;
+        break;
+        
+      default:
+        content = `
+## An Error Occurred
+
+I apologize, but I encountered an error processing your request. Please try again.
+
+${details ? `\n**Error details:** ${details}` : ''}
+`;
+    }
+    
+    const errorMessage = {
+      ...baseErrorMessage,
+      content
+    };
+    
+    // Add the error message to state
+    setMessages(prev => [...prev, errorMessage]);
+    
+    // Attempt to save to database if appropriate
+    try {
+      supabaseService.addChatMessage(errorMessage).catch(e => 
+        console.error('Failed to save error message to database:', e)
+      );
+    } catch (e) {
+      console.error('Error trying to save error message:', e);
+    }
+    
+    return errorMessage;
   };
 
   const contextValue: AppContextType = {

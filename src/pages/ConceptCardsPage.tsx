@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Search, BookOpen, FilterIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ConceptCard from '../components/ConceptCard';
 import { useAppContext } from '../context/AppContext';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAPAnimations } from '../hooks/useGSAPAnimations';
+
+// Register GSAP plugins
+gsap.registerPlugin(ScrollTrigger);
 
 const categories = [
   { id: 'All', name: 'All' },
@@ -17,6 +23,16 @@ const ConceptCardsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredCards, setFilteredCards] = useState(conceptCards);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Animation refs
+  const headerRef = useRef<HTMLDivElement>(null);
+  const searchBarRef = useRef<HTMLDivElement>(null);
+  const categoryBarRef = useRef<HTMLDivElement>(null);
+  const cardsGridRef = useRef<HTMLDivElement>(null);
+  const emptyStateRef = useRef<HTMLDivElement>(null);
+  
+  // Get animation hooks
+  const { staggerItems, scrollReveal } = useGSAPAnimations();
   
   // Filter cards when search query or cards change
   useEffect(() => {
@@ -42,14 +58,105 @@ const ConceptCardsPage: React.FC = () => {
     setSearchQuery('');
   };
   
+  // Initial page load animations
+  useEffect(() => {
+    // Header animation
+    gsap.fromTo(
+      headerRef.current,
+      { y: -50, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }
+    );
+    
+    // Search bar animation
+    gsap.fromTo(
+      searchBarRef.current,
+      { scale: 0.9, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.5, delay: 0.3, ease: "back.out(1.7)" }
+    );
+    
+    // Animate background gradient
+    gsap.fromTo(
+      ".bg-gradient",
+      { opacity: 0 },
+      { opacity: 0.9, duration: 1.2, ease: "power2.out" }
+    );
+    
+    // Set up scroll trigger for cards
+    if (cardsGridRef.current) {
+      const cards = cardsGridRef.current.children;
+      
+      gsap.fromTo(
+        cards,
+        { y: 50, opacity: 0 },
+        { 
+          y: 0, 
+          opacity: 1, 
+          duration: 0.6, 
+          stagger: 0.1,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: cardsGridRef.current,
+            start: "top 80%",
+            end: "bottom 20%",
+            toggleActions: "play none none none"
+          }
+        }
+      );
+    }
+  }, []);
+  
+  // Animate cards when filtered
+  useEffect(() => {
+    if (cardsGridRef.current && filteredCards.length > 0) {
+      const cards = cardsGridRef.current.children;
+      
+      gsap.fromTo(
+        cards,
+        { scale: 0.95, opacity: 0 },
+        { 
+          scale: 1, 
+          opacity: 1, 
+          duration: 0.4, 
+          stagger: 0.05,
+          ease: "power2.out"
+        }
+      );
+    } else if (emptyStateRef.current) {
+      // Animate empty state
+      gsap.fromTo(
+        emptyStateRef.current,
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+      );
+    }
+  }, [filteredCards]);
+  
+  // Animate category bar when toggled
+  useEffect(() => {
+    if (showFilters && categoryBarRef.current) {
+      gsap.fromTo(
+        categoryBarRef.current.querySelectorAll('button'),
+        { y: -10, opacity: 0 },
+        { 
+          y: 0, 
+          opacity: 1, 
+          duration: 0.3, 
+          stagger: 0.05,
+          ease: "power2.out",
+          delay: 0.1
+        }
+      );
+    }
+  }, [showFilters]);
+  
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Background gradient */}
-      <div className="absolute top-0 left-0 right-0 h-48 bg-gradient-to-r from-indigo-500 to-purple-600 opacity-90 -z-10"></div>
+      <div className="bg-gradient absolute top-0 left-0 right-0 h-48 bg-gradient-to-r from-indigo-500 to-purple-600 opacity-0 -z-10"></div>
       <div className="absolute top-0 left-0 right-0 h-48 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-30 -z-5"></div>
       
       {/* Header */}
-      <div className="backdrop-blur-sm bg-white/80 shadow-sm z-50 sticky top-0">
+      <div ref={headerRef} className="backdrop-blur-sm bg-white/80 shadow-sm z-50 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
@@ -58,7 +165,7 @@ const ConceptCardsPage: React.FC = () => {
               </Link>
               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Concept Cards</h1>
             </div>
-            <div className="flex items-center space-x-2">
+            <div ref={searchBarRef} className="flex items-center space-x-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-indigo-400 h-5 w-5" />
                 <input
@@ -89,7 +196,7 @@ const ConceptCardsPage: React.FC = () => {
       </div>
       
       {/* Category Bar */}
-      <div className={`backdrop-blur-sm bg-white/80 border-b shadow-sm transition-all duration-300 ${showFilters ? 'max-h-20 py-3 opacity-100' : 'max-h-0 opacity-0 overflow-hidden py-0'}`}>
+      <div ref={categoryBarRef} className={`backdrop-blur-sm bg-white/80 border-b shadow-sm transition-all duration-300 ${showFilters ? 'max-h-20 py-3 opacity-100' : 'max-h-0 opacity-0 overflow-hidden py-0'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
             {categories.map((category) => (
@@ -112,13 +219,13 @@ const ConceptCardsPage: React.FC = () => {
       {/* Cards Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {filteredCards.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div ref={cardsGridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredCards.map((card) => (
               <ConceptCard key={card.id} card={card} />
             ))}
           </div>
         ) : (
-          <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200">
+          <div ref={emptyStateRef} className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200">
             <div className="flex flex-col items-center">
               <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
                 <BookOpen className="h-10 w-10 text-indigo-500" />

@@ -1,117 +1,120 @@
-# Emerce - AI-Powered Educational Visualization Platform
+# Emerce AI Chat Application
 
-Emerce is an interactive web application that helps users visualize educational concepts using AI. The platform features a chat interface for interacting with AI models and a concept cards gallery for organizing educational content.
+An AI-powered chat application with concept card generation and database storage features.
 
 ## Features
 
-- **AI Chat Interface:** Chat with AI models to ask questions about various educational topics
-- **Persistent Chat History:** All conversations are saved to the database with their respective conversation IDs in chronological order
-- **Chat History Navigation:** Access older chats easily through the chat history sidebar
-- **Image Upload:** Upload images to get AI analysis and explanations
-- **Voice Input:** Use voice commands to interact with the AI (mock implementation)
-- **Multiple AI Models:** Choose between different AI models for different types of queries
-- **Concept Cards:** Auto-generates educational concept cards from chat interactions
-- **Category Filtering:** Filter concept cards by subject area (Physics, Chemistry, Biology, Other)
+- 💬 AI chat with Gemini models
+- 📚 Automatic concept card generation for educational content
+- 🗃️ Database storage for chats, messages, and concept cards
+- 📋 Todo management with priority tracking
+- 🌈 Beautiful UI with animations and responsive design
 
-## Tech Stack
-
-- **Frontend:** React, TypeScript, TailwindCSS
-- **AI Integration:** Google Gemini API
-- **Database:** Supabase
-- **Routing:** React Router
-- **Build Tool:** Vite
-
-## Getting Started
+## Setup
 
 ### Prerequisites
 
-- Node.js (v16 or later)
-- npm or yarn
-- Google Gemini API key
-- Supabase account and project
+- Node.js 18+ and npm
+- A Supabase account and project
+- A Google AI API key for Gemini
+
+### Environment Variables
+
+Create a `.env` file in the root directory with:
+
+```
+VITE_GOOGLE_API_KEY=your-google-api-key
+VITE_SUPABASE_URL=your-supabase-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+### Database Setup
+
+The application requires several tables in your Supabase database. You can create them automatically through the app's setup UI or manually using SQL.
+
+#### Option 1: Setup through the App
+
+1. Run the application (see below)
+2. If the database connection fails, click the "Show Setup SQL" button
+3. Copy the SQL and run it in your Supabase SQL Editor
+4. Refresh the application
+
+#### Option 2: Manual SQL Setup
+
+Run the following SQL in your Supabase SQL Editor:
+
+```sql
+-- 1. Create the chats table
+CREATE TABLE IF NOT EXISTS chats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  model TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Create the messages table with a foreign key to chats
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Create the concept_cards table
+CREATE TABLE IF NOT EXISTS concept_cards (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  category TEXT NOT NULL,
+  color_gradient TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Create the todos table
+CREATE TABLE IF NOT EXISTS todos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  priority TEXT CHECK (priority IN ('high', 'medium', 'low')),
+  due_date TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
 ### Installation
 
-1. Clone the repository
-```
-git clone <repository-url>
-cd emerce
-```
-
-2. Install dependencies
-```
+```bash
 npm install
-```
-
-3. Create a `.env` file in the project root with the following variables:
-```
-VITE_SUPABASE_URL=https://your-supabase-url.supabase.co
-VITE_SUPABASE_KEY=your-supabase-key
-VITE_GEMINI_API_KEY=your-gemini-api-key
-```
-
-4. Set up Supabase tables:
-   - Create a `chats` table with columns:
-     - id (uuid, primary key)
-     - title (text)
-     - created_at (timestamp)
-     - updated_at (timestamp)
-     - model (text)
-   
-   - Create a `messages` table with columns:
-     - id (uuid, primary key)
-     - role (text)
-     - content (text)
-     - chat_id (uuid, foreign key to chats.id)
-     - created_at (timestamp)
-     - attachments (text array)
-   
-   - Create a `concept_cards` table with columns:
-     - id (uuid, primary key)
-     - title (text)
-     - content (text)
-     - category (text)
-     - created_at (timestamp)
-     - color_gradient (text)
-
-   - Alternatively, you can run the database setup script:
-     ```
-     npx tsx src/scripts/setup-db.ts
-     ```
-
-### Running the Application
-
-```
 npm run dev
 ```
 
-The application will be available at http://localhost:5173
+## Troubleshooting
 
-## Usage
+### Database Connection Issues
 
-1. **Main Chat Page:**
-   - Type questions or prompts in the chat input
-   - Upload images to analyze them
-   - Use the microphone button for voice input
-   - Select different AI models from the menu
-   - Access chat history from the sidebar menu
-   - Start new conversations with the "+" button
-   - Navigate to Concept Cards using the grid icon
+If you see database connection errors:
 
-2. **Chat History:**
-   - All messages are automatically saved to the database with their conversation IDs
-   - Message timestamps are displayed to show when each message was sent
-   - Click on a conversation in the sidebar to load all its messages
-   - Rename or delete conversations using the edit and delete buttons
+1. Verify your Supabase URL and API key in the `.env` file
+2. Check if your tables have been created properly
+3. Use the "Show Setup SQL" button to get the correct SQL for table creation
+4. Ensure your Supabase project has Row Level Security (RLS) appropriately configured
 
-2. **Concept Cards Page:**
-   - Filter cards by category using the category tabs
-   - Search for specific cards using the search box
-   - Return to chat using the back button
+### Gemini API Issues
 
-## License
+If AI responses are not working:
 
-[MIT License](LICENSE)
+1. Check your Google API key in the `.env` file
+2. Verify your API key has access to the Gemini models in the Google AI Studio
+3. Check for any quota limitations on your Google AI account
+
+## Technologies
+
+- React with TypeScript
+- Google Gemini AI API
+- Supabase for database
+- Tailwind CSS for styling
+- GSAP for animations
 
 # React + TypeScript + Vite
 

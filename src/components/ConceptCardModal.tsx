@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ConceptCard as ConceptCardType } from '../services/supabase';
 import { Calendar, X, Edit2, Trash2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { gsap } from 'gsap';
 
 interface ConceptCardModalProps {
   card: ConceptCardType;
@@ -15,6 +16,13 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
   const [editedTitle, setEditedTitle] = useState(card.title);
   const [editedContent, setEditedContent] = useState(card.content);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Animation refs
+  const modalOverlayRef = useRef<HTMLDivElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const buttonsRef = useRef<HTMLDivElement>(null);
   
   // Format date for display
   const formatDate = (dateString?: string) => {
@@ -30,6 +38,94 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
     }).format(date);
   };
   
+  // Modal entrance animation
+  useEffect(() => {
+    if (isOpen && modalOverlayRef.current && modalContentRef.current) {
+      // Animate overlay
+      gsap.fromTo(
+        modalOverlayRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3, ease: "power1.out" }
+      );
+      
+      // Animate modal content
+      gsap.fromTo(
+        modalContentRef.current,
+        { opacity: 0, y: 50, scale: 0.95 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(1.2)" }
+      );
+      
+      // Animate header
+      gsap.fromTo(
+        headerRef.current,
+        { opacity: 0, y: -20 },
+        { opacity: 1, y: 0, duration: 0.5, delay: 0.1, ease: "power2.out" }
+      );
+      
+      // Animate content
+      gsap.fromTo(
+        contentRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.5, delay: 0.2, ease: "power2.out" }
+      );
+      
+      // Animate buttons
+      gsap.fromTo(
+        buttonsRef.current,
+        { opacity: 0, y: 20 },
+        { opacity: 1, y: 0, duration: 0.5, delay: 0.3, ease: "power2.out" }
+      );
+    }
+  }, [isOpen]);
+  
+  // Close with animation
+  const animatedClose = () => {
+    if (modalOverlayRef.current && modalContentRef.current) {
+      // Animate overlay and content out
+      gsap.to(modalOverlayRef.current, {
+        opacity: 0,
+        duration: 0.3,
+        ease: "power2.in"
+      });
+      
+      gsap.to(modalContentRef.current, {
+        opacity: 0,
+        y: 30,
+        scale: 0.95,
+        duration: 0.3,
+        ease: "power2.in",
+        onComplete: onClose
+      });
+    } else {
+      onClose();
+    }
+  };
+  
+  // Animation when switching to edit mode
+  useEffect(() => {
+    if (contentRef.current) {
+      gsap.fromTo(
+        contentRef.current,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }
+      );
+    }
+  }, [isEditing]);
+  
+  // Animation when switching to delete confirmation
+  useEffect(() => {
+    if (isDeleting && buttonsRef.current) {
+      const deleteConfirm = buttonsRef.current.querySelector('.delete-confirm');
+      if (deleteConfirm) {
+        gsap.fromTo(
+          deleteConfirm,
+          { opacity: 0, scale: 0.95 },
+          { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.2)" }
+        );
+      }
+    }
+  }, [isDeleting]);
+  
   const handleSave = async () => {
     if (editedTitle.trim() === '' || editedContent.trim() === '') {
       alert('Title and content cannot be empty');
@@ -41,6 +137,20 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
         title: editedTitle,
         content: editedContent
       });
+      
+      // Animate success feedback
+      if (contentRef.current) {
+        gsap.fromTo(
+          contentRef.current,
+          { boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.5)' },
+          { 
+            boxShadow: '0 0 0 0px rgba(16, 185, 129, 0)', 
+            duration: 1.5,
+            ease: "power2.out"
+          }
+        );
+      }
+      
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating concept card:', error);
@@ -50,8 +160,23 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
   
   const handleDelete = async () => {
     try {
-      await deleteConceptCard(card.id);
-      onClose();
+      // Animate before deletion
+      if (modalContentRef.current) {
+        gsap.to(modalContentRef.current, {
+          opacity: 0,
+          y: -30,
+          scale: 0.9,
+          duration: 0.3,
+          ease: "power2.in",
+          onComplete: async () => {
+            await deleteConceptCard(card.id);
+            onClose();
+          }
+        });
+      } else {
+        await deleteConceptCard(card.id);
+        onClose();
+      }
     } catch (error) {
       console.error('Error deleting concept card:', error);
       alert('Failed to delete concept card');
@@ -64,10 +189,21 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
   const gradient = card.color_gradient || 'from-purple-500 to-indigo-500';
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div 
+      ref={modalOverlayRef}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      onClick={animatedClose}
+    >
+      <div 
+        ref={modalContentRef}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className={`bg-gradient-to-r ${gradient} px-6 py-5 flex justify-between items-center relative overflow-hidden`}>
+        <div 
+          ref={headerRef}
+          className={`bg-gradient-to-r ${gradient} px-6 py-5 flex justify-between items-center relative overflow-hidden`}
+        >
           {/* Decorative elements */}
           <div className="absolute -top-6 -right-6 w-16 h-16 bg-white bg-opacity-20 rounded-full"></div>
           <div className="absolute top-10 -left-10 w-24 h-24 bg-white bg-opacity-10 rounded-full"></div>
@@ -76,7 +212,7 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
             {isEditing ? 'Edit Concept Card' : card.title}
           </h2>
           <button 
-            onClick={onClose}
+            onClick={animatedClose}
             className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-1 transition-all duration-200 relative z-10"
           >
             <X size={24} />
@@ -84,7 +220,7 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
         </div>
         
         {/* Content */}
-        <div className="overflow-y-auto flex-grow p-6">
+        <div ref={contentRef} className="overflow-y-auto flex-grow p-6">
           {isEditing ? (
             <div className="space-y-4">
               <div>
@@ -132,7 +268,7 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
         </div>
         
         {/* Footer with actions */}
-        <div className="px-6 py-4 bg-gray-50 flex justify-between border-t">
+        <div ref={buttonsRef} className="px-6 py-4 bg-gray-50 flex justify-between border-t">
           {isEditing ? (
             <div className="flex space-x-3">
               <button
@@ -150,7 +286,7 @@ const ConceptCardModal: React.FC<ConceptCardModalProps> = ({ card, isOpen, onClo
             </div>
           ) : isDeleting ? (
             <div className="flex space-x-3 w-full">
-              <div className="bg-red-50 border border-red-200 rounded-md p-3 flex-grow shadow-inner">
+              <div className="delete-confirm bg-red-50 border border-red-200 rounded-md p-3 flex-grow shadow-inner">
                 <p className="text-red-700 font-medium">Are you sure you want to delete this concept card?</p>
                 <p className="text-red-600 text-sm mt-1">This action cannot be undone.</p>
                 <div className="flex justify-end mt-3 space-x-3">
