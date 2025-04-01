@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff6b9c" />
+      <stop offset="50%" stop-color="#c066d5" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <g filter="url(#glow)">
+    <path d="M100,20 C140,20 170,60 170,100 C170,140 140,180 100,180 C60,180 30,140 30,100 C30,60 60,20 100,20 Z" fill="url(#gradient)" />
+    <path d="M65,80 C75,70 85,75 95,80 C105,75 115,70 125,80 C135,90 130,110 120,120 C110,130 90,130 80,120 C70,110 65,90 65,80 Z" fill="rgba(255,255,255,0.2)" />
+    <ellipse cx="80" cy="90" rx="5" ry="7" fill="rgba(255,255,255,0.6)" />
+    <ellipse cx="120" cy="90" rx="5" ry="7" fill="rgba(255,255,255,0.6)" />
+    <path d="M85,110 Q100,120 115,110" stroke="rgba(255,255,255,0.6)" fill="transparent" stroke-width="2" />
+  </g>
+</svg> 

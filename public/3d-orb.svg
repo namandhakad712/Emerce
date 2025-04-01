@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="orb_gradient" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#ff6b9c" stop-opacity="0.7" />
+      <stop offset="70%" stop-color="#9c4dff" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#4289ff" stop-opacity="0.4" />
+    </radialGradient>
+    <filter id="orb_glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Main orb -->
+  <circle cx="100" cy="100" r="70" fill="url(#orb_gradient)" filter="url(#orb_glow)" />
+  
+  <!-- Shine overlays -->
+  <ellipse cx="80" cy="80" rx="45" ry="35" fill="rgba(255,255,255,0.3)" transform="rotate(-15, 80, 80)" />
+  <ellipse cx="110" cy="70" rx="10" ry="5" fill="rgba(255,255,255,0.5)" />
+  
+  <!-- Inner details -->
+  <path d="M70,90 Q100,120 130,90" stroke="rgba(255,255,255,0.4)" fill="transparent" stroke-width="2" stroke-linecap="round" />
+  <path d="M75,110 Q100,80 125,110" stroke="rgba(255,255,255,0.3)" fill="transparent" stroke-width="1" stroke-linecap="round" />
+  
+  <!-- Particles around the orb -->
+  <circle cx="60" cy="50" r="3" fill="rgba(255,255,255,0.7)" />
+  <circle cx="150" cy="90" r="2" fill="rgba(255,255,255,0.8)" />
+  <circle cx="80" cy="150" r="4" fill="rgba(255,255,255,0.6)" />
+  <circle cx="140" cy="140" r="3" fill="rgba(255,255,255,0.7)" />
+  <circle cx="40" cy="120" r="2" fill="rgba(255,255,255,0.8)" />
+</svg> 

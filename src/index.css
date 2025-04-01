@@ -4,65 +4,55 @@
 
 @layer base {
   :root {
-    --background: 90 50% 85%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 270 75% 60%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 90 50% 85%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 270 75% 95%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 270 75% 60%;
-
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --primary: 265 83.3% 45.1%;
+    --primary-foreground: 210 40% 98%;
+    --ring: 265 83.3% 45.1%;
     --radius: 1rem;
+  }
+  
+  body {
+    @apply text-foreground font-sans;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  html {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
   }
 
   .dark {
-    --background: 90 50% 85%;
-    --foreground: 210 40% 98%;
+    --background: 260 60% 15%;
+    --foreground: 0 0% 100%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 260 60% 20%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 260 60% 20%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 270 75% 60%;
-    --primary-foreground: 0 0% 100%;
+    --secondary: 220 70% 60%;
+    --secondary-foreground: 0 0% 100%;
 
-    --secondary: 90 50% 85%;
-    --secondary-foreground: 210 40% 98%;
+    --muted: 260 40% 30%;
+    --muted-foreground: 0 0% 80%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 270 75% 95%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 290 70% 70%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 270 75% 60%;
+    --border: 260 40% 30%;
+    --input: 260 40% 30%;
   }
 }
 
@@ -70,25 +60,226 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-theme text-foreground;
-  }
 }
 
 @layer components {
-  .chat-container {
-    @apply bg-theme rounded-[2rem] overflow-hidden shadow-lg;
+  .bubble {
+    @apply absolute rounded-full bg-gradient-to-br opacity-60 blur-sm;
+    animation: pulse 4s ease-in-out infinite, float 6s ease-in-out infinite;
+  }
+  
+  .responsive-container {
+    @apply h-screen w-full flex flex-col relative overflow-hidden;
+    background-image: linear-gradient(to bottom, #f3e8ff, #ede9fe, #ddd6fe, #e9e9fd);
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  /* Medium screens and up */
+  @media (min-width: 768px) {
+    .responsive-container {
+      @apply w-full mx-auto;
+    }
+  }
+  
+  /* Remove the max-width constraints for larger screens */
+  /* 
+  @media (min-width: 1024px) {
+    .responsive-container {
+      @apply max-w-5xl;
+    }
   }
 
+  @media (min-width: 1280px) {
+    .responsive-container {
+      @apply max-w-6xl;
+    }
+  }
+  */
+  
+  .action-button {
+    @apply rounded-full shadow-md flex items-center justify-center;
+    transition: transform 0.2s ease;
+  }
+  
+  .action-button:active {
+    transform: scale(0.95);
+  }
+  
+  .message-bubble {
+    @apply rounded-2xl px-4 py-3;
+    max-width: 85%;
+  }
+  
   .user-message {
-    @apply bg-chatbubble-user rounded-xl p-4;
+    @apply bg-gradient-to-r from-purple-600 to-indigo-600 text-white;
   }
-
+  
   .ai-message {
-    @apply bg-chatbubble-ai rounded-xl p-4 shadow-sm;
+    @apply bg-white text-gray-800 shadow-sm;
   }
 
-  .app-button {
-    @apply bg-black text-white rounded-full px-6 py-3 font-medium hover:opacity-90 transition-opacity;
+  .chat-container {
+    @apply bg-card rounded-[2rem] overflow-hidden shadow-lg;
   }
+  
+  .card-meditation {
+    @apply rounded-xl p-4 text-white shadow-lg;
+  }
+  
+  .card-pink {
+    @apply bg-gradient-to-br from-pink-500 to-pink-400;
+  }
+  
+  .card-blue {
+    @apply bg-gradient-to-br from-blue-500 to-blue-400;
+  }
+  
+  .glass-panel {
+    @apply backdrop-blur-md bg-white/10 rounded-3xl p-6;
+  }
+  
+  .circle-button {
+    @apply rounded-full p-4 backdrop-blur-md bg-white/20 flex items-center justify-center;
+  }
+
+  .chat-bubble-user {
+    @apply text-gray-600 text-sm;
+  }
+  
+  .chat-bubble-ai {
+    @apply text-gray-800;
+  }
+  
+  .sidebar-item {
+    @apply px-3 py-2 rounded-lg flex items-center my-1 cursor-pointer hover:bg-gray-100;
+  }
+  
+  .sidebar-item-active {
+    @apply bg-gray-100;
+  }
+
+  /* Chat area should take available space but not expand beyond viewport */
+  .flex-1 {
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  /* Ensure chat messages area has proper scrolling behavior but doesn't force page scroll */
+  .chat-messages {
+    @apply overflow-y-auto;
+    max-height: calc(100vh - 210px);
+    height: auto;
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0%;
+  }
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, rgba(188, 124, 230, 0.8) 0%, rgba(255, 122, 195, 0.8) 100%);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 24px;
+}
+
+@layer utilities {
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Add mobile app styling */
+.mobile-phone-frame {
+  position: relative;
+  border-radius: 40px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* Status bar styling */
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: #000;
+}
+
+.concept-card {
+  @apply shadow-md rounded-2xl p-4 overflow-hidden h-full cursor-pointer transition-transform duration-300;
+  transform: perspective(1000px) rotateY(0deg);
+}
+
+.concept-card:hover {
+  transform: perspective(1000px) rotateY(3deg) translateZ(5px);
+  @apply shadow-lg;
+}
+
+.category-pill {
+  @apply text-xs font-semibold px-2.5 py-0.5 rounded-full;
+}
+
+.category-pill-all {
+  @apply bg-gray-200 text-gray-800;
+}
+
+.category-pill-physics {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.category-pill-chemistry {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.category-pill-biology {
+  @apply bg-green-100 text-green-800;
+}
+
+.category-pill-other {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.category-tab {
+  @apply px-4 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors duration-200;
+}
+
+.category-tab-active {
+  @apply bg-purple-600 text-white;
+}
+
+.category-tab-inactive {
+  @apply bg-white text-gray-600 hover:bg-gray-100;
+}
+
+.search-input {
+  @apply pl-10 pr-4 py-2 border-0 rounded-full bg-white shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-purple-500;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }

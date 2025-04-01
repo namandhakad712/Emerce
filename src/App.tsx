@@ -1,32 +1,32 @@
-import { Suspense, lazy } from "react";
-import { useRoutes, Routes, Route } from "react-router-dom";
-import Home from "./components/home";
-import routes from "tempo-routes";
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import ChatPage from "./pages/ChatPage";
+import ConceptCardsPage from "./pages/ConceptCardsPage";
+import TodoPage from "./pages/TodoPage";
+import { AppProvider } from "./context/AppContext";
+import './App.css';
 
-const ChatPage = lazy(() => import("./pages/ChatPage"));
-const ConceptCardsPage = lazy(() => import("./pages/ConceptCardsPage"));
+// Check if we're in offline mode (no Supabase)
+const isOfflineMode = !import.meta.env.VITE_SUPABASE_URL || 
+                      import.meta.env.VITE_SUPABASE_URL === 'your-supabase-url.supabase.co';
 
 function App() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center h-screen bg-theme">
-          <p>Loading...</p>
+    <AppProvider>
+      {isOfflineMode && (
+        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-xs md:text-sm text-center py-0.5 z-50">
+          Running in offline mode — data will not be saved between sessions
         </div>
-      }
-    >
-      <>
+      )}
+      <Router>
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/" element={<ChatPage />} />
           <Route path="/concept-cards" element={<ConceptCardsPage />} />
-          {import.meta.env.VITE_TEMPO === "true" && (
-            <Route path="/tempobook/*" />
-          )}
+          <Route path="/todos" element={<TodoPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-      </>
-    </Suspense>
+      </Router>
+    </AppProvider>
   );
 }
 

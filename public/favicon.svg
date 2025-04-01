@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="256" fill="url(#gradient)" />
+  <path d="M191 442V382M321 442V382M160 280H352M126 382H386C408.402 382 419.603 382 428.162 376.564C435.686 371.807 441.807 364.686 446.564 357.162C452 348.603 452 337.402 452 315V174C452 151.598 452 140.397 446.564 131.838C441.807 124.314 435.686 118.193 428.162 113.436C419.603 108 408.402 108 386 108H126C103.598 108 92.3973 108 83.8379 113.436C76.3142 118.193 70.1934 124.314 65.4357 131.838C60 140.397 60 151.598 60 174V315C60 337.402 60 348.603 65.4357 357.162C70.1934 364.686 76.3142 371.807 83.8379 376.564C92.3973 382 103.598 382 126 382Z" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Adding E letters for Emerce -->
+  <path d="M200 220H240M200 250H230M200 280H240" stroke="white" stroke-width="16" stroke-linecap="round" />
+</svg> 

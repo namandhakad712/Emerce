@@ -1,149 +1,163 @@
-import React from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  MessageSquare,
-  User,
-  Image as ImageIcon,
-  CornerDownRight,
-} from "lucide-react";
-
-interface Message {
-  id: string;
-  content: string;
-  sender: "user" | "ai";
-  timestamp: Date;
-  hasImage?: boolean;
-  imageUrl?: string;
-  isReplyTo?: string;
-}
+import React, { useState, useRef } from 'react';
+import { Edit, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
+import * as supabaseService from '../services/supabase';
+import { formatDistanceToNow } from 'date-fns';
+import { useChatHistory } from '../hooks/useChatHistory';
 
 interface ChatHistoryProps {
-  messages?: Message[];
-  onReplyToMessage?: (messageId: string) => void;
+  onChatSelected?: () => void; // Optional callback for when a chat is selected (e.g., to close mobile menu)
 }
 
-const ChatHistory: React.FC<ChatHistoryProps> = ({
-  messages = [
-    {
-      id: "1",
-      content: "Hello! How can I help with your studies today?",
-      sender: "ai",
-      timestamp: new Date(Date.now() - 60000 * 5),
-    },
-    {
-      id: "2",
-      content: "Can you explain the concept of photosynthesis?",
-      sender: "user",
-      timestamp: new Date(Date.now() - 60000 * 4),
-    },
-    {
-      id: "3",
-      content:
-        "Photosynthesis is the process by which green plants and some other organisms use sunlight to synthesize foods with the help of chlorophyll. During this process, plants convert light energy into chemical energy, which is stored in the bonds of glucose molecules. The process primarily takes place in the chloroplasts of plant cells, especially in the leaves. The basic equation for photosynthesis is: 6CO₂ + 6H₂O + light energy → C₆H₁₂O₆ + 6O₂. This process is essential for life on Earth as it produces oxygen and serves as the primary source of energy for most ecosystems.",
-      sender: "ai",
-      timestamp: new Date(Date.now() - 60000 * 3),
-    },
-    {
-      id: "4",
-      content: "Can you also explain the light-dependent reactions?",
-      sender: "user",
-      timestamp: new Date(Date.now() - 60000 * 2),
-      isReplyTo: "3",
-    },
-    {
-      id: "5",
-      content:
-        "The light-dependent reactions are the first stage of photosynthesis, where light energy is captured and converted to chemical energy. These reactions take place in the thylakoid membrane of the chloroplasts and require direct light to proceed. During this stage, water molecules are split, releasing oxygen as a byproduct, and light energy is converted into chemical energy in the form of ATP and NADPH, which are then used in the light-independent reactions (Calvin cycle) to produce glucose.",
-      sender: "ai",
-      timestamp: new Date(Date.now() - 60000),
-    },
-  ],
-  onReplyToMessage = () => {},
-}) => {
+const ChatHistory: React.FC<ChatHistoryProps> = ({ onChatSelected }) => {
+  const { 
+    chatHistory, 
+    currentChatId, 
+    isLoading, 
+    error,
+    loadChatMessages, 
+    renameChatConversation, 
+    deleteChatConversation,
+    createNewChatConversation
+  } = useChatHistory();
+  
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [newChatTitle, setNewChatTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle chat edit submit
+  const handleChatRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingChatId && newChatTitle.trim()) {
+      const success = await renameChatConversation(editingChatId, newChatTitle.trim());
+      if (success) {
+        setEditingChatId(null);
+        setNewChatTitle('');
+      }
+    }
+  };
+
+  // Start editing a chat title
+  const startEditingChat = (chat: supabaseService.Chat) => {
+    setEditingChatId(chat.id);
+    setNewChatTitle(chat.title);
+    // Focus the input after a short delay to allow rendering
+    setTimeout(() => {
+      editInputRef.current?.focus();
+    }, 50);
+  };
+
+  // Handle chat deletion with confirmation
+  const handleChatDelete = async (chatId: string) => {
+    if (window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+      await deleteChatConversation(chatId);
+    }
+  };
+
+  // Format date for better readability
+  const formatChatDate = (dateString: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+    } catch (error) {
+      return 'Unknown date';
+    }
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    const success = await loadChatMessages(chatId);
+    if (success && onChatSelected) {
+      onChatSelected();
+    }
+  };
+
   return (
-    <div className="w-full h-full bg-theme flex flex-col">
-      <ScrollArea className="flex-1 p-4">
-        <div className="flex flex-col space-y-4 max-w-4xl mx-auto">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`flex ${message.sender === "user" ? "flex-row-reverse" : "flex-row"} max-w-[80%] gap-3`}
-              >
-                <div className="flex-shrink-0 mt-1">
-                  {message.sender === "user" ? (
-                    <Avatar className="h-8 w-8 bg-primary">
-                      <User className="h-5 w-5 text-white" />
-                    </Avatar>
-                  ) : (
-                    <Avatar className="h-8 w-8 bg-secondary">
-                      <MessageSquare className="h-5 w-5 text-white" />
-                    </Avatar>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  {message.isReplyTo && (
-                    <div className="flex items-center text-xs text-muted-foreground mb-1">
-                      <CornerDownRight className="h-3 w-3 mr-1" />
-                      <span>Replying to previous message</span>
-                    </div>
-                  )}
-
-                  <Card
-                    className={`p-4 ${message.sender === "user" ? "user-message" : "ai-message"}`}
+    <div className="chat-history">
+      <div className="p-3">
+        <div className="flex items-center justify-between px-4 py-2">
+          <span className="text-sm font-medium text-gray-500">Chat History</span>
+          <span className="text-xs text-gray-500">{chatHistory.length} chats</span>
+        </div>
+        
+        {error && (
+          <div className="mx-4 my-2 p-2 bg-red-50 border border-red-200 rounded-md text-red-600 text-xs flex items-center">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {error}
+          </div>
+        )}
+        
+        <div className="mt-2 space-y-1">
+          {chatHistory.map((chat) => (
+            <div key={chat.id} className="px-2">
+              {editingChatId === chat.id ? (
+                <form onSubmit={handleChatRename} className="flex items-center p-2 bg-gray-50 rounded-md">
+                  <input
+                    ref={editInputRef}
+                    type="text"
+                    value={newChatTitle}
+                    onChange={(e) => setNewChatTitle(e.target.value)}
+                    className="flex-1 px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    placeholder="Chat title"
+                    disabled={isLoading}
+                  />
+                  <button 
+                    type="submit" 
+                    className="ml-1 p-1 text-green-600 hover:text-green-800"
+                    disabled={isLoading}
                   >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-
-                    {message.hasImage && message.imageUrl && (
-                      <div className="mt-2">
-                        <div className="relative rounded-md overflow-hidden">
-                          <img
-                            src={message.imageUrl}
-                            alt="Uploaded content"
-                            className="max-w-full h-auto object-cover"
-                          />
-                          <div className="absolute top-2 right-2 bg-black/50 rounded-full p-1">
-                            <ImageIcon className="h-4 w-4 text-white" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>
-                      {new Date(message.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-
-                    {message.sender === "ai" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => onReplyToMessage(message.id)}
-                      >
-                        <CornerDownRight className="h-3 w-3 mr-1" />
-                        Reply
-                      </Button>
-                    )}
+                    Save
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setEditingChatId(null)}
+                    className="ml-1 p-1 text-gray-500 hover:text-gray-700"
+                    disabled={isLoading}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-md hover:bg-gray-50 transition cursor-pointer 
+                    ${currentChatId === chat.id ? 'bg-purple-50 border-l-4 border-purple-500' : ''}`}
+                  onClick={() => handleSelectChat(chat.id)}
+                >
+                  <div className="flex items-center space-x-3 overflow-hidden">
+                    <MessageSquare className={`h-5 w-5 ${currentChatId === chat.id ? 'text-purple-600' : 'text-gray-400'}`} />
+                    <div className="truncate">
+                      <div className="font-medium text-sm truncate">{chat.title}</div>
+                      <div className="text-xs text-gray-500">{formatChatDate(chat.updated_at)}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex space-x-1">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditingChat(chat);
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                      disabled={isLoading}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChatDelete(chat.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-600"
+                      disabled={isLoading}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 };
 
-export default ChatHistory;
+export default ChatHistory; 
