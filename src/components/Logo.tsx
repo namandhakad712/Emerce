@@ -32,15 +32,6 @@ export const Logo: React.FC<LogoProps> = ({ className }) => {
       ease: 'power2.inOut'
     });
     
-    // Create a subtle float effect for the text
-    gsap.to(logoTextRef.current, {
-      y: -3,
-      duration: 1.5,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut'
-    });
-    
     return () => {
       // Clean up animations on unmount
       timeline.kill();

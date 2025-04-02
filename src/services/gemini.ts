@@ -8,6 +8,12 @@ interface Message {
   id?: string;
 }
 
+// Type for multimodal content
+interface ContentPart {
+  text?: string;
+  image_url?: string;
+}
+
 // Define model interface
 export interface GeminiModel {
   id: string;
@@ -16,6 +22,7 @@ export interface GeminiModel {
   inputTokenLimit?: number;
   outputTokenLimit?: number;
   supportedGenerationMethods?: string[];
+  multimodal?: boolean;
 }
 
 // Initialize the Gemini API with the API key
@@ -159,7 +166,7 @@ export const fetchAvailableModels = async () => {
 
 // Generate AI response
 export const generateResponse = async (
-  messages: { role: string; content: string | Array<{ text?: string }> }[],
+  messages: { role: string; content: string | Array<ContentPart> }[],
   modelId: string = 'gemini-pro',
   generationConfig: GenerationConfig = DEFAULT_GENERATION_CONFIG
 ) => {
@@ -196,57 +203,61 @@ export const generateResponse = async (
       };
     }
 
+    // Store the last message for later use
+    const lastMessage = messages[messages.length - 1];
+
+    // Define directFetch here so it's accessible throughout the function
+    const directFetch = async (inputText: string) => {
+      try {
+        console.log("Using direct API fetch as fallback method with v1 endpoint");
+        // Format the API request
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                { text: inputText }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024
+          }
+        };
+        
+        // Make the API call directly
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+        
+        const responseData = await response.json();
+        const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+        
+        return {
+          role: 'assistant',
+          content: text,
+        };
+      } catch (directError) {
+        console.error("Direct API fetch also failed:", directError);
+        throw directError;
+      }
+    };
+
     try {
       // Safety check - try to handle API version issues by using a direct fetch if the SDK fails
-      const directFetch = async (text: string) => {
-        try {
-          console.log("Using direct API fetch as fallback method with v1 endpoint");
-          // Format the API request
-          const requestBody = {
-            contents: [
-              {
-                parts: [
-                  { text }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 1024
-            }
-          };
-          
-          // Make the API call directly
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(requestBody)
-            }
-          );
-          
-          if (!response.ok) {
-            throw new Error(`API request failed with status ${response.status}`);
-          }
-          
-          const responseData = await response.json();
-          const text = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
-          
-          return {
-            role: 'assistant',
-            content: text,
-          };
-        } catch (directError) {
-          console.error("Direct API fetch also failed:", directError);
-          throw directError;
-        }
-      };
 
       // Determine if this is an educational question that needs the template
-      const lastMessage = messages[messages.length - 1];
       const userMessage = typeof lastMessage.content === 'string' ? 
         lastMessage.content : 
         JSON.stringify(lastMessage.content);
@@ -498,9 +509,11 @@ Please provide a clear, accurate, and well-structured response. Include relevant
       
       if ((error as any)?.message?.includes('v1beta')) {
         console.error('API VERSION ERROR: The SDK is trying to use v1beta which is deprecated. Using direct v1 API call as fallback.');
+        // Use the directFetch function defined earlier in this scope
         return await directFetch(lastMessageText);
       }
       
+      // Use the directFetch function defined earlier in this scope
       return await directFetch(lastMessageText);
     }
   } catch (error) {

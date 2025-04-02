@@ -560,10 +560,12 @@ export default function ChatPage() {
       <div className="flex-1 px-4 py-4 chat-messages space-y-5 overflow-y-auto" ref={messagesListRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center mt-12">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 mb-6 flex items-center justify-center shadow-lg shadow-indigo-200">
-              <svg viewBox="0 0 24 24" className="h-14 w-14 text-white" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 12H15M12 9V15M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+            <div className="w-34 h-34 mb-6 flex items-center justify-center">
+              <img 
+                src="/src/assets/glass-chatpage.png" 
+                alt="Chat Page Background" 
+                className="h-36 w-36 object-contain"
+              />
             </div>
             <h3 className="text-2xl font-semibold text-gray-800 mb-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
               Start a New Chat
