@@ -1443,4 +1443,67 @@ const getGeminiPrompt = (model: string): string => {
   
   // Return appropriate prompt based on model
   return model === 'gemini-pro' ? basePrompt + educationalPrompt : basePrompt;
+};
+
+// Generate an image using Gemini API
+export const generateImage = async (prompt: string): Promise<string | null> => {
+  try {
+    console.log('[IMAGE GENERATION] Generating image with prompt:', prompt);
+    
+    // Use the image generation model
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': API_KEY
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          responseModalities: ["Text", "Image"]
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[IMAGE GENERATION] API error:', response.status, errorText);
+      throw new Error(`API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('[IMAGE GENERATION] Response received:', data);
+
+    // Extract the base64 image data from the response
+    if (data.candidates && 
+        data.candidates[0] && 
+        data.candidates[0].content && 
+        data.candidates[0].content.parts) {
+      
+      for (const part of data.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          console.log('[IMAGE GENERATION] Successfully generated image');
+          return part.inlineData.data; // Return base64 data
+        }
+      }
+    }
+    
+    console.error('[IMAGE GENERATION] No image found in response');
+    return null;
+  } catch (error) {
+    console.error('[IMAGE GENERATION] Error generating image:', error);
+    return null;
+  }
+};
+
+// Check if a message is an image generation command
+export const isImageGenerationCommand = (text: string): boolean => {
+  return text.trim().startsWith('/image ');
+};
+
+// Extract the image prompt from a command
+export const extractImagePrompt = (text: string): string => {
+  return text.trim().substring('/image '.length).trim();
 }; 

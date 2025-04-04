@@ -275,120 +275,54 @@ export const getChatMessages = async (chatId: string) => {
   }
 };
 
-export const addChatMessage = async (message: Omit<ChatMessage, 'id' | 'created_at'>) => {
+export const addChatMessage = async (message: ChatMessage) => {
+  console.log('Adding message to chat', message.id);
+  
   try {
-    console.log(`========= ADDING MESSAGE ==========`);
-    console.log(`Chat ID: ${message.chat_id}, Role: ${message.role}`);
-    console.log('Content preview:', typeof message.content === 'string' ? message.content.substring(0, 50) + '...' : 'complex content');
+    // Handle complex content (JSON arrays/objects)
+    let processedContent = message.content;
     
-    // Validate message has required fields
-    if (!message.chat_id) {
-      console.error('Error: Cannot add message - missing chat_id');
-      return null;
+    // If content is an object or array, stringify it
+    if (typeof processedContent === 'object') {
+      processedContent = JSON.stringify(processedContent);
     }
     
-    if (!message.role) {
-      console.error('Error: Cannot add message - missing role');
-      return null;
+    // If content is a string but might be JSON, ensure it's properly formatted
+    if (typeof processedContent === 'string' && 
+        (processedContent.startsWith('[') || processedContent.startsWith('{'))) {
+      try {
+        // Try to parse it to make sure it's valid JSON
+        const parsed = JSON.parse(processedContent);
+        // Then re-stringify to ensure consistent formatting
+        processedContent = JSON.stringify(parsed);
+      } catch (e) {
+        // If it's not valid JSON, leave it as-is
+        console.log('Content looks like JSON but is not valid', e);
+      }
     }
     
-    if (!message.content) {
-      console.error('Error: Cannot add message - missing content');
-      return null;
-    }
-    
-    const newMessage = {
-      ...message,
-      id: uuidv4(),
-      created_at: new Date().toISOString(),
-    };
-    
-    // FORCE DATABASE MODE: Always use real database for messages
-    const forceDatabaseMode = true; // Set to true to bypass mock storage and use real database
-    
-    if (useMockData && !forceDatabaseMode) {
-      console.log('Using mock storage for adding message');
-      mockStorage.messages.push(newMessage);
-      return newMessage;
-    }
-    
-    // Convert attachments to proper format for database
-    const messageToInsert = {
-      ...message,
-      id: uuidv4(), // Generate explicit ID
-      attachments: message.attachments ? JSON.stringify(message.attachments) : null,
-      created_at: new Date().toISOString(),
-    };
-    
-    console.log('Inserting message into Supabase:', {
-      id: messageToInsert.id, // Log the explicitly generated ID
-      chat_id: messageToInsert.chat_id,
-      role: messageToInsert.role,
-      content_length: messageToInsert.content?.length || 0,
-      has_attachments: !!messageToInsert.attachments
-    });
-    
-    // Verify chat exists before inserting message
-    const { data: chatExists, error: chatCheckError } = await supabase
-      .from('chats')
-      .select('id')
-      .eq('id', message.chat_id)
-      .single();
-    
-    if (chatCheckError) {
-      console.error('Error checking if chat exists:', chatCheckError);
-      console.error(`Chat with ID ${message.chat_id} may not exist for message insertion`);
-    } else {
-      console.log(`Verified chat ${message.chat_id} exists:`, !!chatExists);
-    }
-    
-    // Insert the message
+    // Insert the message with processed content
     const { data, error } = await supabase
       .from('messages')
-      .insert([messageToInsert])
-      .select();
+      .insert({
+        id: message.id,
+        role: message.role,
+        content: processedContent,
+        chat_id: message.chat_id,
+        created_at: message.created_at || new Date().toISOString()
+      })
+      .select()
+      .single();
     
     if (error) {
-      console.error('Supabase error adding message:', error);
-      console.error('Error details:', JSON.stringify(error));
-      
-      console.log('Attempting message insert without automatic ID generation...');
-      // Try inserting without the id field to let Supabase generate it
-      const simplifiedMessage = {
-        role: message.role,
-        content: message.content,
-        chat_id: message.chat_id,
-        attachments: message.attachments ? JSON.stringify(message.attachments) : null,
-        created_at: new Date().toISOString(),
-      };
-      
-      const { data: retryData, error: retryError } = await supabase
-        .from('messages')
-        .insert([simplifiedMessage])
-        .select();
-      
-      if (retryError) {
-        console.error('Retry insertion also failed:', retryError);
-      // Fallback to mock storage if database insert fails
-      console.log('Falling back to mock storage due to error');
-      mockStorage.messages.push(newMessage);
-      return newMessage;
-      }
-      
-      console.log('Retry successful! Message added with ID:', retryData?.[0]?.id);
-      return retryData?.[0] as ChatMessage || newMessage;
+      throw error;
     }
     
-    console.log('Successfully added message to database:', data?.[0]?.id);
-    return data?.[0] as ChatMessage || newMessage;
+    console.log('Message added successfully', data.id);
+    return data as ChatMessage;
   } catch (error) {
     console.error('Error adding message:', error);
-    // Return the message anyway so the UI doesn't break
-    return {
-      ...message,
-      id: uuidv4(),
-      created_at: new Date().toISOString(),
-    };
+    return null;
   }
 };
 

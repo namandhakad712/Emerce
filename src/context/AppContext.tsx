@@ -147,10 +147,16 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
     let newChatId: string | null = null;
     
     try {
+      // Check if this is an image generation command
+      const isImageCommand = geminiService.isImageGenerationCommand(content);
+      
       // Create a new chat if needed
       if (!currentChatId) {
         console.log('No current chat ID, creating new chat');
-        const newChat = await supabaseService.createChat('New Conversation', currentModel);
+        const newChat = await supabaseService.createChat(
+          isImageCommand ? 'Image Generation' : 'New Conversation', 
+          currentModel
+        );
         if (newChat) {
           newChatId = newChat.id;
           setCurrentChatId(newChat.id);
@@ -164,6 +170,77 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
       // Process the content
       let messageContent: string | any[] = content;
       let processedContent = content;
+      let generatedImage: string | null = null;
+      
+      // Handle image generation command
+      if (isImageCommand) {
+        console.log('Detected image generation command');
+        const imagePrompt = geminiService.extractImagePrompt(content);
+        
+        // Create user message in state and database for the image command
+        const chatIdToUse = newChatId || currentChatId;
+        const timestamp = Date.now();
+        
+        const userMessage: supabaseService.ChatMessage = {
+          id: uuidv4(),
+          role: 'user',
+          content: content,
+          chat_id: chatIdToUse,
+          created_at: new Date(timestamp).toISOString()
+        };
+        
+        // Add user message to state
+        setMessages(prev => [...prev, userMessage]);
+        
+        // Save message to database
+        const savedUserMessage = await supabaseService.addChatMessage(userMessage);
+        
+        if (!savedUserMessage) {
+          console.error('Failed to save user message to database');
+        }
+        
+        // Generate the image
+        generatedImage = await geminiService.generateImage(imagePrompt);
+        
+        if (generatedImage) {
+          // Create AI message with the generated image
+          const aiMessage: supabaseService.ChatMessage = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: JSON.stringify([
+              { text: `Here's the image based on your prompt: "${imagePrompt}"` },
+              { 
+                inlineData: {
+                  mimeType: "image/png",
+                  data: generatedImage
+                }
+              }
+            ]),
+            chat_id: chatIdToUse,
+            created_at: new Date().toISOString()
+          };
+          
+          // Add AI message to state
+          setMessages(prev => [...prev, aiMessage]);
+          
+          // Save AI message to database
+          const savedAiMessage = await supabaseService.addChatMessage(aiMessage);
+          
+          if (!savedAiMessage) {
+            console.error('Failed to save AI message with image to database');
+          }
+        } else {
+          // Handle error - add error message to chat
+          addErrorMessageToChat(
+            chatIdToUse,
+            'general',
+            'I was unable to generate an image based on your prompt. Please try again with a different prompt.'
+          );
+        }
+        
+        setIsProcessing(false);
+        return;
+      }
       
       // Handle image uploads if there's a selected image
       if (selectedImage) {

@@ -557,127 +557,170 @@ export default function ChatPage() {
 
       {/* Main chat container */}
       {/* Chat messages with enhanced styling */}
-      <div className="flex-1 px-4 py-4 chat-messages space-y-5 overflow-y-auto" ref={messagesListRef}>
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center mt-12">
-            <div className="w-34 h-34 mb-6 flex items-center justify-center">
-              <img 
-                src="/src/assets/glass-chatpage.png" 
-                alt="Chat Page Background" 
-                className="h-36 w-36 object-contain"
-              />
-            </div>
-            <h3 className="text-2xl font-semibold text-gray-800 mb-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-              Start a New Chat
-            </h3>
-            <p className="text-gray-600 mb-8 max-w-md">
-              {isMultimodalModel 
-                ? "Ask questions or upload images for analysis and get AI-powered explanations"
-                : "Get answers to questions about any topic and generate concept cards"}
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg w-full">
-              {isMultimodalModel
-                ? [
-                    { text: "Solve this problem", icon: <div className="p-1"><ChevronUp className="h-4 w-4" /></div> },
-                    { text: "Explain a concept", icon: <div className="p-1"><MessageSquare className="h-4 w-4" /></div> },
-                    { text: "Upload & analyze image", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
-                    { text: "Create a summary", icon: <div className="p-1"><Settings className="h-4 w-4" /></div> }
-                  ].map((item, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        if (item.text.includes("Upload")) {
-                          fileInputRef.current?.click();
-                        } else {
-                          setInput(item.text);
-                          setTimeout(() => sendMessage(item.text), 500);
-                        }
-                      }}
-                      className="flex items-center p-1 text-left rounded-xl bg-white hover:bg-gray-50 shadow-sm hover:shadow border border-gray-100 transition-all duration-200 group"
-                    >
-                      <div className="h-10 w-10 rounded-lg bg-indigo-100 text-indigo-600 group-hover:bg-indigo-200 flex items-center justify-center mr-3 transition-colors duration-200">
-                        {item.icon}
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">{item.text}</span>
-                    </button>
-                  ))
-                : [
-                    { text: "Solve a problem", icon: <div className="p-1"><ChevronUp className="h-4 w-4" /></div> },
-                    { text: "Explain a concept", icon: <div className="p-1"><MessageSquare className="h-4 w-4" /></div> },
-                    { text: "What is cellular respiration?", icon: <div className="p-1"><Settings className="h-4 w-4" /></div> },
-                    { text: "Create a summary", icon: <div className="p-1"><Grid className="h-4 w-4" /></div> }
-                  ].map((item, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth" ref={chatContainerRef}>
+        <div className="space-y-6" ref={messagesListRef}>
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center mt-12">
+              <div className="w-34 h-34 mb-6 flex items-center justify-center">
+                <img 
+                  src="/src/assets/glass-chatpage.png" 
+                  alt="Chat Page Background" 
+                  className="h-36 w-36 object-contain"
+                />
+              </div>
+              <h3 className="text-2xl font-semibold text-gray-800 mb-3 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                Start a New Chat
+              </h3>
+              <p className="text-gray-600 mb-8 max-w-md">
+                Ask questions, upload images, or generate images with the "/image" command
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg w-full">
+                {[
+                  { text: "Explain a concept", icon: <div className="p-1"><MessageSquare className="h-4 w-4" /></div> },
+                  { text: "Upload & analyze image", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
+                  { text: "/image a cat in space", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
+                  { text: "Create a summary", icon: <div className="p-1"><Settings className="h-4 w-4" /></div> }
+                ].map((item, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      if (item.text.includes("Upload")) {
+                        fileInputRef.current?.click();
+                      } else {
                         setInput(item.text);
-                        setTimeout(() => sendMessage(item.text), 500);
-                      }}
-                      className="flex items-center p-1 text-left rounded-xl bg-white hover:bg-gray-50 shadow-sm hover:shadow border border-gray-100 transition-all duration-200 group"
-                    >
-                      <div className="h-10 w-10 rounded-lg bg-indigo-100 text-indigo-600 group-hover:bg-indigo-200 flex items-center justify-center mr-3 transition-colors duration-200">
-                        {item.icon}
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">{item.text}</span>
-                    </button>
-                  ))
-              }
+                        setTimeout(() => 
+                          item.text.startsWith('/image') 
+                            ? sendMessage(item.text) 
+                            : sendMessage(item.text), 
+                          500
+                        );
+                      }
+                    }}
+                    className="flex items-center p-1 text-left rounded-xl bg-white hover:bg-gray-50 shadow-sm hover:shadow border border-gray-100 transition-all duration-200 group"
+                  >
+                    <div className="h-10 w-10 rounded-lg bg-indigo-100 text-indigo-600 group-hover:bg-indigo-200 flex items-center justify-center mr-3 transition-colors duration-200">
+                      {item.icon}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700">{item.text}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          messages.map((message, index) => {
-            // Find the previous user message for this AI response
-            const previousUserMessage = index > 0 && messages[index - 1].role === 'user' 
-              ? messages[index - 1] 
-              : null;
-
-            return (
-              <div 
-                key={message.id} 
-                className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-4`}
-              >
+          ) : (
+            messages.map((message, index) => {
+              const isUser = message.role === 'user';
+              const prevUserMessage = isUser ? null : messages.slice(0, index)
+                .reverse()
+                .find(m => m.role === 'user');
+              
+              // Parse content for potentially complex messages
+              let messageContent = message.content;
+              let hasInlineImages = false;
+              let contentParts: any[] = [];
+              
+              try {
+                // Check if the content is a JSON string
+                if (typeof messageContent === 'string' && 
+                    (messageContent.startsWith('[') || messageContent.startsWith('{'))) {
+                  try {
+                    const parsed = JSON.parse(messageContent);
+                    
+                    if (Array.isArray(parsed)) {
+                      contentParts = parsed;
+                      // Check if any part contains inline data (images)
+                      hasInlineImages = parsed.some(part => part.inlineData || part.inline_data);
+                    } else if (parsed && typeof parsed === 'object') {
+                      contentParts = [parsed];
+                      hasInlineImages = parsed.inlineData || parsed.inline_data;
+                    }
+                  } catch (e) {
+                    // Not valid JSON, use as-is
+                    contentParts = [{ text: messageContent }];
+                  }
+                } else {
+                  // Plain text message
+                  contentParts = [{ text: messageContent }];
+                }
+              } catch (error) {
+                console.error('Error parsing message content:', error);
+                contentParts = [{ text: 'Error displaying message content' }];
+              }
+              
+              // Get friendly timestamp
+              const timestamp = message.created_at 
+                ? new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                : '';
+                
+              return (
                 <div 
-                  className={`message max-w-[85%] p-4 rounded-2xl ${
-                    message.role === 'assistant' 
-                    ? 'bg-white text-slate-800 shadow-sm border border-gray-100' 
-                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-                  }`}
+                  key={message.id} 
+                  className={`message-item flex ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  {/* Message content */}
-                  {message.role === 'assistant' ? (
-                    <TemplatedResponse 
-                      content={message.content} 
-                      conceptCardStatus={getConceptCardStatus(message.id)}
-                      userMessage={previousUserMessage}
-                    />
-                  ) : (
-                    <div>
-                      {message.content}
+                  <div className={`flex flex-col max-w-[85%] md:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div 
+                      className={`message rounded-2xl p-4 shadow-sm ${
+                        isUser 
+                          ? 'bg-indigo-600 text-white' 
+                          : 'bg-white/80 backdrop-blur-sm text-gray-800 border border-gray-100'
+                      }`}
+                    >
+                      {/* Message content with images or text */}
+                      <div className="space-y-3">
+                        {contentParts.map((part, partIndex) => {
+                          if (part.text) {
+                            return (
+                              <div key={`text-${partIndex}`} className="prose-sm">
+                                {part.text}
+                              </div>
+                            );
+                          } else if (part.inlineData || part.inline_data) {
+                            const imgData = part.inlineData || part.inline_data;
+                            if (imgData && imgData.data) {
+                              return (
+                                <div key={`img-${partIndex}`} className="mt-2 relative">
+                                  <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm">
+                                    <img 
+                                      src={`data:${imgData.mimeType || 'image/png'};base64,${imgData.data}`}
+                                      alt="Generated image" 
+                                      className="max-w-full h-auto rounded-lg"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
+                          return null;
+                        })}
+                      </div>
+                      
+                      {/* For image attachments uploaded as files */}
                       {message.attachments && message.attachments.length > 0 && (
-                        <div className="mt-2 rounded-lg overflow-hidden bg-white/10 backdrop-blur-sm p-2">
-                          <img 
-                            src={message.attachments[0]} 
-                            alt="Attached image" 
-                            className="rounded-lg max-w-full max-h-64 object-contain shadow-inner border border-white/20" 
-                          />
+                        <div className="mt-2 space-y-2">
+                          {message.attachments.map((attachment, i) => (
+                            <div key={i} className="relative">
+                              <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm">
+                                <img 
+                                  src={attachment} 
+                                  alt={`Attachment ${i+1}`} 
+                                  className="max-w-full h-auto rounded-lg"
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  )}
+                    
+                    {/* Message timestamp */}
+                    <div className={`text-xs text-gray-500 mt-1 px-2 ${isUser ? 'text-right' : 'text-left'}`}>
+                      {timestamp}
+                    </div>
+                  </div>
                 </div>
-                
-                {/* Timestamp with enhanced styling */}
-                <div className={`text-xs ${message.role === 'assistant' ? 'text-left' : 'text-right'} text-gray-500 mt-1 px-2`}>
-                  {message.created_at ? (
-                    formatDistanceToNow(new Date(message.created_at), { addSuffix: true })
-                  ) : (
-                    'Just now'
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
         
         {/* Enhanced loading indicator */}
         {isProcessing && (
@@ -778,32 +821,28 @@ export default function ChatPage() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              disabled={isProcessing}
-              placeholder={
-                isMultimodalModel
-                  ? "Ask me anything or upload an image..."
-                  : "Ask me anything..."
-              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              placeholder={`Type a message or "/image" to generate an image...`}
               className="bg-transparent flex-1 outline-none text-gray-800 placeholder-gray-500 text-sm md:text-base"
+              disabled={isProcessing}
+              autoFocus
             />
             <button 
-              type="submit" 
+              onClick={handleSubmit}
               disabled={isProcessing || (!input.trim() && !selectedImage)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 p-3 rounded-xl shadow-md disabled:opacity-50 hover:shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 active:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-400"
+              className={`p-2 rounded-lg ${
+                !isProcessing && (input.trim() || selectedImage)
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                  : 'bg-gray-100 text-gray-400'
+              } transition-colors`}
+              aria-label="Send message"
             >
-              {input.trim() ? (
-                <ChevronUp className="h-5 w-5 md:h-6 md:w-6 text-white" />
-              ) : (
-                <Mic 
-                  className="h-5 w-5 md:h-6 md:w-6 text-white" 
-                  onClick={(e) => {
-                    if (!input.trim() && !selectedImage) {
-                      e.preventDefault();
-                      handleVoiceInput();
-                    }
-                  }}
-                />
-              )}
+              <ChevronUp className="h-5 w-5" />
             </button>
           </div>
           
