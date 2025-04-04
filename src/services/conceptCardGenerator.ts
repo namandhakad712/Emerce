@@ -30,6 +30,19 @@ const CARD_GRADIENTS = [
   'from-indigo-500 to-blue-500',
   'from-red-500 to-pink-500',
   'from-teal-500 to-blue-500',
+  // New gradients
+  'from-rose-500 to-orange-400',
+  'from-emerald-500 to-lime-600',
+  'from-sky-500 to-indigo-600',
+  'from-amber-400 to-orange-500',
+  'from-violet-600 to-indigo-600',
+  'from-cyan-400 to-blue-500',
+  'from-fuchsia-600 to-pink-600',
+  'from-lime-500 to-green-500',
+  'from-orange-500 to-red-600',
+  'from-blue-400 to-violet-500',
+  'from-emerald-400 to-teal-500',
+  'from-rose-400 to-pink-600'
 ];
 
 /**

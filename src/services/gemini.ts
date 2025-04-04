@@ -177,18 +177,18 @@ const fetchModelsFromEndpoint = async (apiVersion: string): Promise<GeminiModel[
     }
     
     // Process and map the models
-    const availableModels = data.models
-      .filter((model: any) => model.name.includes('gemini'))
-      .map((model: any) => {
-        // Extract the model name from the full path (models/gemini-pro)
-        const modelId = model.name.split('/').pop();
-        
-        // Format the display name
-        let displayName = modelId
-          .split('-')
-          .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(' ');
-        
+      const availableModels = data.models
+        .filter((model: any) => model.name.includes('gemini'))
+        .map((model: any) => {
+          // Extract the model name from the full path (models/gemini-pro)
+          const modelId = model.name.split('/').pop();
+          
+          // Format the display name
+          let displayName = modelId
+            .split('-')
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+          
         // Determine if the model is multimodal based on supported methods
         // Models that support image inputs (vision models) are multimodal
         const supportedMethods = model.supportedGenerationMethods || [];
@@ -204,18 +204,18 @@ const fetchModelsFromEndpoint = async (apiVersion: string): Promise<GeminiModel[
         
         console.log(`Model ${modelId} multimodal status: ${isMultimodal}`);
         
-        return {
-          id: modelId,
-          name: displayName,
-          description: model.description || '',
-          inputTokenLimit: model.inputTokenLimit || 0,
-          outputTokenLimit: model.outputTokenLimit || 0,
-          supportedGenerationMethods: model.supportedGenerationMethods || [],
+          return {
+            id: modelId,
+            name: displayName,
+            description: model.description || '',
+            inputTokenLimit: model.inputTokenLimit || 0,
+            outputTokenLimit: model.outputTokenLimit || 0,
+            supportedGenerationMethods: model.supportedGenerationMethods || [],
           multimodal: isMultimodal,
           apiVersion: apiVersion  // Tag with correct API version
-        };
-      });
-    
+          };
+        });
+      
     console.log(`Found ${availableModels.length} models in ${apiVersion} endpoint`);
     return availableModels;
   } catch (error) {
@@ -235,6 +235,28 @@ export const generateResponse = async (
   
   // Track if we've already tried truncating the context
   let hasTriedTruncation = false;
+
+  // Check if the last message is an educational query
+  const lastMessage = messages[messages.length - 1];
+  const lastMessageContent = typeof lastMessage.content === 'string' 
+    ? lastMessage.content 
+    : Array.isArray(lastMessage.content) && lastMessage.content.length > 0 && lastMessage.content[0].text
+      ? lastMessage.content[0].text
+      : '';
+  
+  // Only check for educational formatting if this is a text message (not an image)
+  let isEducational = false;
+  let templateData = { subject: '', topic: '', question: '', isForcedTemplate: false };
+  
+  if (lastMessageContent && lastMessage.role === 'user' && typeof lastMessage.content === 'string') {
+    isEducational = detectEducationalQuery(lastMessageContent);
+    console.log('Educational query detected:', isEducational);
+    
+    if (isEducational) {
+      templateData = processEducationalQuery(lastMessageContent);
+      console.log('Educational query processed:', templateData);
+    }
+  }
   
   // Function to estimate token count roughly (1 token ≈ 4 chars)
   const estimateTokenCount = (messages: { role: string; content: string | Array<ContentPart> }[]): number => {
@@ -333,36 +355,64 @@ export const generateResponse = async (
       
       // Get the last user message
       const lastMessage = currentMessages[currentMessages.length - 1];
+      console.log('Last message content type:', typeof lastMessage.content);
       
-      // Check if message contains images
-      const isMultimodal = Array.isArray(lastMessage.content) && 
-                          lastMessage.content.some(part => 
-                            part.image_url || 
-                            (part as any).inlineData || 
-                            (part as any).inline_data
-                          );
+      // Check if message contains images - handle both string (JSON) and array formats
+      let hasImages = false;
+      let parsedContent: any[] = [];
       
-      // Always use vision model for images
-      const useModel = isMultimodal ? 'gemini-pro-vision' : currentModelId;
-      console.log(`Using model: ${useModel} (original: ${currentModelId}, is multimodal: ${isMultimodal})`);
+      if (typeof lastMessage.content === 'string') {
+        try {
+          // Try to parse as JSON if it might be a stringified array
+          if (lastMessage.content.trim().startsWith('[') && lastMessage.content.includes('inlineData')) {
+            parsedContent = JSON.parse(lastMessage.content);
+            hasImages = parsedContent.some(part => 
+              part.inlineData || 
+              part.image_url || 
+              (part.image_url && part.image_url.startsWith('data:'))
+            );
+            console.log('Parsed JSON string content into array, hasImages:', hasImages);
+          }
+        } catch (e) {
+          console.log('Message content is not parseable JSON:', e);
+          parsedContent = [{ text: lastMessage.content }];
+        }
+      } else if (Array.isArray(lastMessage.content)) {
+        parsedContent = lastMessage.content;
+        hasImages = lastMessage.content.some(part => 
+          part.inlineData || 
+          part.image_url || 
+          (part.image_url && part.image_url.startsWith('data:'))
+        );
+        console.log('Content is already an array, hasImages:', hasImages);
+      }
+      
+      // Do not use educational template for image content
+      if (hasImages) {
+        isEducational = false;
+      }
+      
+      // Always use vision model when images are present
+      const useModel = hasImages ? 'gemini-pro-vision' : currentModelId;
+      console.log(`Using model: ${useModel} (original: ${currentModelId}, has images: ${hasImages})`);
       
       // Get the API version for this model
       const apiVersion = getApiVersion(useModel);
       console.log(`Using API version: ${apiVersion} for model: ${useModel}`);
       
-      // For multimodal (image) messages - use a direct approach
-      if (isMultimodal && Array.isArray(lastMessage.content)) {
+      // For image-containing messages - use a direct API approach for guaranteed format
+      if (hasImages) {
         console.log('Processing image content with direct API call');
         
         // Extract all parts (both text and images)
         const multimodalParts = [];
         let imageCount = 0;
         
-        for (const part of lastMessage.content) {
+        for (const part of parsedContent) {
           if (part.text) {
             multimodalParts.push({ text: part.text });
           } else if (part.inlineData && part.inlineData.data) {
-            // Direct inline data (already formatted correctly)
+            // Direct inline data format
             multimodalParts.push({
               inlineData: {
                 mimeType: part.inlineData.mimeType || 'image/jpeg',
@@ -370,8 +420,9 @@ export const generateResponse = async (
               }
             });
             imageCount++;
+            console.log(`Added image with mime type: ${part.inlineData.mimeType}, data length: ${part.inlineData.data.length.toLocaleString()} chars`);
           } else if (part.image_url && part.image_url.startsWith('data:')) {
-            // Parse data URL
+            // Parse data URL format
             const [header, base64Data] = part.image_url.split(',');
             if (base64Data) {
               const mimeMatch = header.match(/data:(.*?);/);
@@ -384,6 +435,7 @@ export const generateResponse = async (
                 }
               });
               imageCount++;
+              console.log(`Added image from data URL with mime type: ${mimeType}, data length: ${base64Data.length.toLocaleString()} chars`);
             }
           }
         }
@@ -391,105 +443,161 @@ export const generateResponse = async (
         console.log(`Prepared ${multimodalParts.length} parts (${imageCount} images)`);
         
         try {
-          // Get correct API version for vision model
-          const visionApiVersion = getApiVersion('gemini-pro-vision');
+          // If we have no valid parts, add a default text part
+          if (multimodalParts.length === 0) {
+            multimodalParts.push({ text: "Analyze this image" });
+          }
+          
+          // Ensure we have properly formatted the request body
+        const requestBody = {
+          contents: [
+            {
+                parts: multimodalParts
+            }
+          ],
+          generationConfig: {
+              temperature: generationConfig.temperature || 0.7,
+              maxOutputTokens: generationConfig.maxOutputTokens || 1024,
+              topK: generationConfig.topK || 40,
+              topP: generationConfig.topP || 0.95
+            }
+          };
+          
+          console.log('Making direct API call for multimodal content to endpoint:', 
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/gemini-pro-vision:generateContent`);
           
           // Make direct API call with correct API version
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/${visionApiVersion}/models/gemini-pro-vision:generateContent?key=${API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{
-                  parts: multimodalParts
-                }],
-                generationConfig: {
-                  temperature: generationConfig.temperature || 0.7,
-                  maxOutputTokens: generationConfig.maxOutputTokens || 2048,
-                  topK: generationConfig.topK || 40,
-                  topP: generationConfig.topP || 0.95
-                }
-              })
-            }
-          );
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/gemini-pro-vision:generateContent?key=${API_KEY}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+        
+          // Get response data
+          const responseData = await response.json();
+          console.log('Direct API response:', responseData);
           
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`API error: ${response.status} - ${errorText}`);
-            
-            // If this is a rate limit error (429), try a different model
-            if (response.status === 429) {
-              throw new Error(`RATE_LIMIT:${errorText}`);
-            }
-            
-            throw new Error(`API request failed: ${errorText}`);
+          // Check for errors
+        if (!response.ok) {
+            const errorMessage = responseData.error?.message || 'Unknown error from API';
+            console.error('API error:', errorMessage);
+            throw new Error(errorMessage);
           }
           
-          const data = await response.json();
-          const textContent = data?.candidates?.[0]?.content?.parts?.[0]?.text || 
-                            'Sorry, I could not analyze that image. Please try again.';
+          // Extract text from response
+          const aiContent = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
           
-          return { content: textContent };
+          if (!aiContent) {
+            console.error('No content in API response', responseData);
+            throw new Error('No content generated by AI');
+          }
+          
+          return { content: aiContent };
         } catch (error) {
-          console.error('Error with direct image API call:', error);
+          console.error('Error in direct API call for image:', error);
           
-          // If rate limit hit, try fallback model
-          if (error instanceof Error && error.message.startsWith('RATE_LIMIT:')) {
-            console.log('Rate limit hit, trying fallback model for image processing');
-            // For images, we can only use vision models
-            const fallbackVisionModel = 'gemini-1.5-pro-vision';
-            
-            if (!triedModels.has(fallbackVisionModel)) {
-              console.log(`Trying fallback vision model: ${fallbackVisionModel}`);
-              return attemptGeneration(fallbackVisionModel, currentMessages);
-            }
-          }
-          
-          // User-friendly error messages based on error type
+          // Provide appropriate error messages
           if (error instanceof Error) {
-            if (error.message.includes('INVALID_ARGUMENT')) {
-              return {
-                content: "I'm sorry, I can't analyze this image. The image may be in an unsupported format or contain content I can't process."
+            if (error.message.includes('unsupported') || error.message.includes('format')) {
+        return {
+                content: 'Sorry, I couldn\'t process that image. It appears to be in an unsupported format. Please try with a JPEG or PNG image.'
               };
-            }
-            
-            if (error.message.includes('PERMISSION_DENIED') || 
-                error.message.includes('CONTENT_POLICY')) {
+            } else if (error.message.includes('content')) {
               return {
-                content: "I'm sorry, I can't analyze this image due to content policy restrictions."
+                content: 'I\'m unable to analyze this image due to content policy restrictions. Please try a different image.'
               };
-            }
-            
-            if (error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('quota')) {
+            } else if (error.message.includes('resource') || error.message.includes('quota')) {
               return {
-                content: "I'm sorry, I've reached my processing limits. Please try again in a moment or with a simpler request."
+                content: 'The system is experiencing high demand right now. Please try again in a few moments.'
               };
             }
           }
           
-          return {
-            content: "I'm unable to analyze this image. There was a problem processing it."
-          };
+          // Re-throw for generic fallback handling
+          throw error;
         }
       }
       
       // For text-only messages, use the standard approach with correct API version
       const model = genAI.getGenerativeModel({ 
         model: useModel,
-        generationConfig
+        generationConfig: {
+          ...generationConfig,
+          temperature: isEducational ? 0.2 : (generationConfig.temperature || 0.7) // Lower temperature for educational queries
+        }
       });
       
       // Get content for regular messages
-      const messageText = typeof lastMessage.content === 'string' 
+      let messageText = typeof lastMessage.content === 'string' 
         ? lastMessage.content 
         : JSON.stringify(lastMessage.content);
+      
+      // Modify query for educational formatting if needed
+      if (isEducational) {
+        console.log('Adding educational query template formatting');
+        messageText = `IMPORTANT SYSTEM INSTRUCTION: THIS IS AN EDUCATIONAL QUERY. 
+        
+The user's message: "${templateData.question}"
+
+YOU MUST RESPOND USING THIS EXACT TEMPLATE FORMAT WITH NO DEVIATIONS:
+
+*[1-2 sentence summary of the answer]*
+
+## **${templateData.subject}** | *${templateData.topic}*
+
+### **Question:** 
+${templateData.question}
+
+### **Solution:** 
+Step 1: [First step]
+Step 2: [Second step]
+...
+
+### **💡 Tricks & Tips:**
+[Optional tips, mnemonics, or shortcuts to remember the concept]
+
+DO NOT ADD ANY TEXT BEFORE OR AFTER THIS TEMPLATE.
+DO NOT CHANGE THE SECTION HEADINGS OR FORMAT.
+FOLLOW THIS TEMPLATE EXACTLY WITH NO MODIFICATIONS TO THE STRUCTURE.`;
+      }
       
       // Generate content
       try {
         const result = await model.generateContent(messageText);
         const response = await result.response;
-        return { content: response.text() };
+        const responseText = response.text();
+        
+        // Ensure educational responses follow the template format
+        if (isEducational) {
+          // Check if the response follows the template format
+          const hasProperFormat = 
+            responseText.includes('##') && 
+            responseText.includes('###') && 
+            responseText.includes('**Question:**') && 
+            responseText.includes('**Solution:**');
+          
+          // If not in the proper format, create our own template
+          if (!hasProperFormat) {
+            console.log('Response does not follow template, forcing reformatting...');
+            const extracted = extractFromIncompleteResponse(responseText);
+            return { 
+              content: createResponseTemplate(
+                templateData.subject,
+                templateData.topic,
+                templateData.question,
+                extracted.solution,
+                extracted.tricks
+              )
+            };
+          }
+        }
+        
+        return { content: responseText };
       } catch (error) {
         console.error(`Error using SDK for model ${useModel}:`, error);
         
@@ -515,7 +623,7 @@ export const generateResponse = async (
             
             // Try again with truncated context
             return attemptGeneration(currentModelId, truncatedMessages);
-          } else {
+        } else {
             // If we've already tried truncation, return a helpful message
             return {
               content: "This message is too large for me to process. Please try breaking it into smaller parts or starting a new conversation."
@@ -606,7 +714,7 @@ export const generateResponse = async (
         }
         
         // If we've tried all fallbacks, return a quota error message
-        return {
+              return {
           content: "I've reached my processing limits. Please try again in a minute as I'm experiencing high demand right now."
         };
       }
@@ -630,32 +738,33 @@ export const generateResponse = async (
             return attemptGeneration(fallbackModel, currentMessages);
           }
         }
-        
-        return {
+            
+            return {
           content: "I encountered an issue with the selected model. Please try a different model from the menu."
-        };
-      }
-      
+            };
+        }
+        
       // Error handling for other types of errors
       if (error instanceof Error) {
         if (error.message.includes('token count') && error.message.includes('exceeds')) {
-          return {
+        return {
             content: 'This conversation has become too long for me to process. Please start a new chat or ask a shorter question.'
           };
         }
-        
-        return {
+          
+          return {
           content: `I encountered an error processing your request. Please try again in a moment.`
         };
       }
       
-      return {
+    return {
         content: 'I encountered an error while processing your request. Please try again.'
-      };
-    }
+    };
+  }
   };
   
-  // Start with the requested model
+  // Start with the specified model
+  console.log(`Starting generation with model: ${modelId}`);
   return attemptGeneration(modelId);
 };
 
@@ -959,54 +1068,54 @@ export const generateConceptCard = async (
       const apiVersion = getApiVersion(modelId);
       console.log(`[CONCEPT CARD] Using API version: ${apiVersion} for model: ${modelId}`);
       
-      const prompt = `Generate educational content for a concept card based on this query: "${query}"
+    const prompt = `Generate educational content for a concept card based on this query: "${query}"
+    
+    Format the response as JSON with these fields:
+    {
+      "title": "A concise, memorable title for this concept",
+      "content": "Clear, concise explanation (2-3 paragraphs)",
+        "category": "One of: Physics, Chemistry, Biology, Other"
+      }
       
-      Format the response as JSON with these fields:
-      {
-        "title": "A concise, memorable title for this concept",
-        "content": "Clear, concise explanation (2-3 paragraphs)",
-          "category": "One of: Physics, Chemistry, Biology, Other"
-        }
-        
-        Make sure the category is most relevant to the query's subject matter.
-      The category MUST be exactly one of: "Physics", "Chemistry", "Biology", or "Other".
-      Be precise in categorization - use Physics for physical sciences, Chemistry for chemical sciences, Biology for life sciences, and Other for everything else.
-      `;
-      
+      Make sure the category is most relevant to the query's subject matter.
+    The category MUST be exactly one of: "Physics", "Chemistry", "Biology", or "Other".
+    Be precise in categorization - use Physics for physical sciences, Chemistry for chemical sciences, Biology for life sciences, and Other for everything else.
+    `;
+    
       try {
         // Use the specified model
         console.log('[CONCEPT CARD] Using model:', modelId);
         const model = genAI.getGenerativeModel({ model: modelId });
         
         console.log('[CONCEPT CARD] Generating card with model:', modelId);
-        const result = await model.generateContent(prompt);
-        const response = result.response.text();
-        console.log('[CONCEPT CARD] Raw response:', response.substring(0, 100) + '...');
-        
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+    console.log('[CONCEPT CARD] Raw response:', response.substring(0, 100) + '...');
+    
         // Extract JSON from the response
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          console.error('[CONCEPT CARD] No JSON found in response');
-          throw new Error('No JSON found in the response');
-        }
-        
-        const jsonText = jsonMatch[0];
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('[CONCEPT CARD] No JSON found in response');
+        throw new Error('No JSON found in the response');
+      }
+      
+      const jsonText = jsonMatch[0];
         // Sanitize the JSON string before parsing
         const sanitizedJson = sanitizeJsonString(jsonText);
         const parsedResult = JSON.parse(sanitizedJson);
-        
-        // Validate the expected structure
-        if (!parsedResult.title || !parsedResult.content || !parsedResult.category) {
-          console.error('[CONCEPT CARD] Missing required fields in response');
-          throw new Error('Response missing required fields');
-        }
-        
-        // Ensure category is one of the valid options
-        if (!validCategories.includes(parsedResult.category)) {
-          console.log(`[CONCEPT CARD] Invalid category: ${parsedResult.category}, defaulting to 'Other'`);
-          parsedResult.category = 'Other';
-        }
-        
+      
+      // Validate the expected structure
+      if (!parsedResult.title || !parsedResult.content || !parsedResult.category) {
+        console.error('[CONCEPT CARD] Missing required fields in response');
+        throw new Error('Response missing required fields');
+      }
+      
+      // Ensure category is one of the valid options
+      if (!validCategories.includes(parsedResult.category)) {
+        console.log(`[CONCEPT CARD] Invalid category: ${parsedResult.category}, defaulting to 'Other'`);
+        parsedResult.category = 'Other';
+      }
+      
         return parsedResult;
       } catch (sdkError) {
         console.error(`[CONCEPT CARD] SDK error with model ${modelId}:`, sdkError);
@@ -1066,8 +1175,8 @@ export const generateConceptCard = async (
             console.log(`[CONCEPT CARD] Invalid category: ${parsedResult.category}, defaulting to 'Other'`);
             parsedResult.category = 'Other';
           }
-          
-          return parsedResult;
+      
+      return parsedResult;
         }
         
         // If not a 404, rethrow the error
@@ -1102,12 +1211,12 @@ export const generateConceptCard = async (
         
         // If we've tried all models, return a simplified concept card
         console.log('[CONCEPT CARD] All models exhausted, returning simplified card');
-        return {
+      return {
           title: 'Concept Card Unavailable',
           content: 'Sorry, I was unable to generate a detailed concept card at this time due to high demand. Please try again later.',
-          category: 'Other',
-        };
-      }
+        category: 'Other',
+      };
+    }
       
       // Check if the error is related to model not being found
       if (error instanceof Error && 
@@ -1138,8 +1247,8 @@ export const generateConceptCard = async (
       }
       
       // For other errors, return null
-      return null;
-    }
+    return null;
+  }
   };
   
   // Start with gemini-pro model as the default and try fallbacks if needed
@@ -1201,12 +1310,12 @@ export const fileToGenerativePart = async (file: File): Promise<any> => {
     // Function to compress the image
     const compressImage = (imageFile: File, maxWidthHeight = 1024, quality = 0.8): Promise<Blob> => {
       return new Promise((resolve, reject) => {
-        const img = new Image();
+  const img = new Image();
         img.onload = () => {
           // Create a canvas element
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
+  const canvas = document.createElement('canvas');
+  let width = img.width;
+  let height = img.height;
           
           // Calculate the new dimensions while maintaining aspect ratio
           if (width > height) {
@@ -1219,24 +1328,24 @@ export const fileToGenerativePart = async (file: File): Promise<any> => {
               width = Math.round(width * (maxWidthHeight / height));
               height = maxWidthHeight;
             }
-          }
-          
-          // Set canvas dimensions
-          canvas.width = width;
-          canvas.height = height;
-          
+  }
+  
+  // Set canvas dimensions
+  canvas.width = width;
+  canvas.height = height;
+  
           // Draw the image on the canvas
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             return reject(new Error('Failed to get canvas context'));
           }
           
-          ctx.drawImage(img, 0, 0, width, height);
-          
+  ctx.drawImage(img, 0, 0, width, height);
+  
           // Convert canvas to blob
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
                 return reject(new Error('Failed to compress image'));
               }
               resolve(blob);
@@ -1291,8 +1400,8 @@ export const fileToGenerativePart = async (file: File): Promise<any> => {
           try {
             const dataUrl = reader.result as string;
             const [header, base64Data] = dataUrl.split(',');
-            
-            if (!base64Data) {
+    
+    if (!base64Data) {
               return reject(new Error('Failed to extract image data. The file may be corrupted.'));
             }
             
@@ -1317,8 +1426,8 @@ export const fileToGenerativePart = async (file: File): Promise<any> => {
             
             // Return in proper Google Generative AI format
             resolve({
-              inlineData: {
-                data: base64Data,
+      inlineData: {
+        data: base64Data,
                 mimeType: mimeType
               }
             });
@@ -1362,45 +1471,45 @@ export const generateChatTitle = async (content: string): Promise<string> => {
       // Get the API version for this model
       const apiVersion = getApiVersion(modelId);
       console.log(`TITLE GENERATION: Using API version: ${apiVersion} for model: ${modelId}`);
-      
-      // Make a direct API call to Gemini using fetch
-      const trimmedContent = content.substring(0, 500); // Limit the content length
-      
-      // Build a very simple prompt that just asks for a title
-      const prompt = `Generate a brief, descriptive chat title (3-5 words max) based on this conversation: "${trimmedContent}"
-      The title should be specific to what the conversation is actually about.
-      Return ONLY the title text with no quotes, explanation or additional formatting.`;
-      
+    
+    // Make a direct API call to Gemini using fetch
+    const trimmedContent = content.substring(0, 500); // Limit the content length
+    
+    // Build a very simple prompt that just asks for a title
+    const prompt = `Generate a brief, descriptive chat title (3-5 words max) based on this conversation: "${trimmedContent}"
+    The title should be specific to what the conversation is actually about.
+    Return ONLY the title text with no quotes, explanation or additional formatting.`;
+    
       console.log(`TITLE GENERATION: Making direct API call with model ${modelId}`);
-      
-      // Format the API request
-      const requestBody = {
-        contents: [
-          {
-            parts: [
-              { text: prompt }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 50
-        }
-      };
-      
-      // Make the API call directly with the correct API version
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelId}:generateContent?key=${API_KEY}`,
+    
+    // Format the API request
+    const requestBody = {
+      contents: [
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
+          parts: [
+            { text: prompt }
+          ]
         }
-      );
-      
-      if (!response.ok) {
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 50
+      }
+    };
+    
+      // Make the API call directly with the correct API version
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelId}:generateContent?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+    
+    if (!response.ok) {
         const errorText = await response.text();
         console.error(`TITLE GENERATION: API error: ${response.status} - ${errorText}`);
         
@@ -1415,36 +1524,36 @@ export const generateChatTitle = async (content: string): Promise<string> => {
         }
         
         throw new Error(`API request failed with status ${response.status}: ${errorText}`);
-      }
+    }
+    
+    const responseData = await response.json();
+    console.log('TITLE GENERATION: Got API response:', JSON.stringify(responseData).substring(0, 200));
+    
+    // Extract the text from the response
+    let title = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Clean up the title
+    title = title.trim()
+      .replace(/^["'](.*)["']$/, '$1') // Remove surrounding quotes
+      .replace(/^Title:?\s*/i, '')     // Remove "Title:" prefix
+      .replace(/\.$/, '')              // Remove trailing period
+      .replace(/Chat title:?\s*/i, '') // Remove "Chat title:" prefix
+      .trim();
       
-      const responseData = await response.json();
-      console.log('TITLE GENERATION: Got API response:', JSON.stringify(responseData).substring(0, 200));
-      
-      // Extract the text from the response
-      let title = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      
-      // Clean up the title
-      title = title.trim()
-        .replace(/^["'](.*)["']$/, '$1') // Remove surrounding quotes
-        .replace(/^Title:?\s*/i, '')     // Remove "Title:" prefix
-        .replace(/\.$/, '')              // Remove trailing period
-        .replace(/Chat title:?\s*/i, '') // Remove "Chat title:" prefix
-        .trim();
-        
-      console.log('TITLE GENERATION: Processed title:', title);
-      
-      // Check if we got a valid title
-      if (!title || 
-          title.toLowerCase().includes('new conversation') || 
-          title.length < 3 || 
-          title.length > 50) {
-        console.log('TITLE GENERATION: Invalid title, using timestamp fallback');
+    console.log('TITLE GENERATION: Processed title:', title);
+    
+    // Check if we got a valid title
+    if (!title || 
+        title.toLowerCase().includes('new conversation') || 
+        title.length < 3 || 
+        title.length > 50) {
+      console.log('TITLE GENERATION: Invalid title, using timestamp fallback');
         return getTimestampTitle();
-      }
-      
-      console.log('TITLE GENERATION: Final title:', title);
-      return title;
-    } catch (error) {
+    }
+    
+    console.log('TITLE GENERATION: Final title:', title);
+    return title;
+  } catch (error) {
       console.error(`TITLE GENERATION: Error with model ${modelId}:`, error);
       
       // Check for rate limit errors and try fallbacks

@@ -242,11 +242,15 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
   };
 
   // Send a message and get AI response
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (
+    content: string,
+    chatId?: string,
+    selectedImage?: File | null
+  ) => {
     setIsProcessing(true);
-    let isNewChat = false;
-    let newChatId: string | null = null;
-    
+      let isNewChat = false;
+      let newChatId: string | null = null;
+      
     try {
       // Check if this is an image generation command
       const isImageCommand = geminiService.isImageGenerationCommand(content);
@@ -263,7 +267,7 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
           setCurrentChatId(newChat.id);
           setChatHistory(prev => [newChat, ...prev]);
           isNewChat = true;
-        } else {
+          } else {
           throw new Error('Failed to create new chat');
         }
       }
@@ -329,7 +333,7 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
           
           if (!savedAiMessage) {
             console.error('Failed to save AI message with image to database');
-          }
+        }
         } else {
           // Handle error - add error message to chat
           addErrorMessageToChat(
@@ -350,11 +354,12 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
         
         // Add text part if provided, otherwise use a default prompt
         if (processedContent.trim()) {
-          console.log('Adding text part to message');
+          console.log('Adding text part to message with image');
           messageContent.push({ text: processedContent });
         } else {
+          console.log('No text provided with image, using default prompt');
           // Use a default prompt for image-only messages
-          messageContent.push({ text: "Analyze this image and provide a detailed description" });
+          messageContent.push({ text: "What's in this image? Please provide a detailed description." });
         }
         
         // Convert image to base64 data for Gemini API
@@ -363,7 +368,25 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
           try {
             const imagePart = await geminiService.fileToGenerativePart(selectedImage);
             console.log('Image successfully converted to Gemini format');
+            
+            // Check that we received a valid image part
+            if (!imagePart || !imagePart.inlineData) {
+              throw new Error('Failed to process image: Invalid format returned');
+            }
+            
+            // Verify we have both parts: text and image
+            console.log(`Message content has ${(messageContent as any[]).length} parts before adding image`);
             (messageContent as any[]).push(imagePart);
+            console.log(`Message content now has ${(messageContent as any[]).length} parts including image`);
+            
+            // Log the structure (without the actual base64 data) for debugging
+            const logSafeImagePart = { 
+              inlineData: { 
+                mimeType: imagePart.inlineData.mimeType,
+                data: `[base64 data of length: ${imagePart.inlineData.data.length}]` 
+              }
+            };
+            console.log('Image part structure:', logSafeImagePart);
           } catch (imageError) {
             console.error('Error converting image:', imageError);
             
@@ -555,7 +578,20 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
                 "from-red-500 to-pink-500",
                 "from-cyan-500 to-blue-500",
                 "from-fuchsia-500 to-purple-500",
-                "from-amber-500 to-yellow-500"
+                "from-amber-500 to-yellow-500",
+                // New beautiful gradients
+                "from-rose-500 to-orange-400",
+                "from-emerald-500 to-lime-600",
+                "from-sky-500 to-indigo-600",
+                "from-amber-400 to-orange-500",
+                "from-violet-600 to-indigo-600",
+                "from-cyan-400 to-blue-500",
+                "from-fuchsia-600 to-pink-600",
+                "from-lime-500 to-green-500",
+                "from-orange-500 to-red-600",
+                "from-blue-400 to-violet-500",
+                "from-emerald-400 to-teal-500",
+                "from-rose-400 to-pink-600"
               ];
               
               const gradient = gradients[Math.floor(Math.random() * gradients.length)];
@@ -1484,7 +1520,7 @@ ${details ? `\n**Error details:** ${details}` : ''}
 Please try with a different image, preferably a JPEG or PNG with moderate size and resolution.
 `;
         break;
-     
+        
       default:
         content = `
 ## An Error Occurred
