@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Mic, ChevronUp, Menu, Bell, Plus, Image, X, Grid, ChevronDown, Settings, Layers, AlertTriangle, Edit, Trash2, MessageSquare, Check, Database, Copy, Terminal } from "lucide-react";
+import { Mic, ChevronUp, Menu, Bell, Plus, Image, X, Grid, ChevronDown, Settings, Layers, AlertTriangle, Edit, Trash2, MessageSquare, Check, Database, Copy, Terminal, Sparkles, Zap, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import Logo from "../components/Logo";
 import ChatHistory from "../components/ChatHistory";
@@ -11,10 +11,16 @@ import TemplatedResponse from "../components/TemplatedResponse";
 import { useGSAPAnimations } from "../hooks/useGSAPAnimations";
 import { gsap } from "gsap";
 import { GeminiModel } from "../services/gemini";
+import * as geminiService from '../services/gemini';
 
-// Extend the GeminiModel type to include multimodal property
+// Update interface to match the actual Gemini model
 interface ExtendedGeminiModel extends GeminiModel {
   multimodal?: boolean;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+  description?: string;
+  supportedGenerationMethods?: string[];
+  apiVersion?: string;
 }
 
 export default function ChatPage() {
@@ -57,6 +63,9 @@ export default function ChatPage() {
   
   // Animation hooks
   const { fadeIn, staggerItems } = useGSAPAnimations();
+  
+  // State to track if input is an image command
+  const [isImageCommand, setIsImageCommand] = useState(false);
   
   // Check database tables on mount
   useEffect(() => {
@@ -258,6 +267,7 @@ export default function ChatPage() {
       
       sendMessage(messageText);
       setInput("");
+      setIsImageCommand(false); // Reset image command state
     } else {
       console.warn("Attempted to send empty message");
     }
@@ -291,8 +301,10 @@ export default function ChatPage() {
     { size: "w-10 h-10 md:w-16 md:h-16", top: "top-[45%]", left: "left-[32%]", color: "from-blue-200/40 to-indigo-200/40", delay: "2.5s" },
   ];
 
-  const currentModelDetails = models.find(m => m.id === currentModel) as ExtendedGeminiModel;
-  const isMultimodalModel = true; // Enable image upload for all models
+  // Get model details for the current model
+  const currentModelDetails = useMemo(() => {
+    return models.find(m => m.id === currentModel) || null;
+  }, [models, currentModel]);
 
   // Helper function to copy text to clipboard
   const copyToClipboard = async (text: string) => {
@@ -302,6 +314,14 @@ export default function ChatPage() {
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
+  };
+
+  // Function to handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+    // Check if it's an image command (allow for spaces after /image)
+    setIsImageCommand(value.trim().toLowerCase().match(/^\/image(\s|$)/) !== null);
   };
 
   return (
@@ -435,79 +455,118 @@ export default function ChatPage() {
         </div>
       )}
       
-      {/* Model selector dropdown */}
+      {/* Model selector dialog */}
       {showModelSelect && (
-        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm z-40 flex items-start justify-end pt-16 pr-4 md:pr-6" onClick={() => setShowModelSelect(false)}>
-        <div 
-            className="model-select-container w-80 max-w-[92vw] bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-white"
-          onClick={e => e.stopPropagation()}
-        >
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-                  AI Models
-                </h3>
-                <button 
-                  onClick={() => setShowModelSelect(false)}
-                  className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                >
-                  <X className="h-4 w-4 text-gray-500" />
-                </button>
-              </div>
-              
-              <p className="text-sm text-gray-500 mb-5">Select the AI model that best fits your needs</p>
-              
-              {isLoadingModels ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="w-10 h-10 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"></div>
-                  <p className="text-sm text-gray-500">Discovering available models...</p>
-              </div>
-            ) : (
-                <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1 pb-2">
-                {models.map((model) => {
-                  // Apply ExtendedGeminiModel type
-                  const extendedModel = model as ExtendedGeminiModel;
-                  return (
-                    <button
-                      key={model.id}
-                      onClick={() => {
-                        selectModel(model.id);
-                        setShowModelSelect(false);
-                      }}
-                        className={`model-selector-button group relative flex flex-col items-start w-full px-4 py-3 rounded-xl transition-all duration-300 overflow-hidden ${
-                        model.id === currentModel
-                            ? "bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 active"
-                            : "hover:bg-gray-50 border border-transparent hover:border-gray-100"
-                      }`}
-                    >
-                        {/* Background hover effect */}
-                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-100/70 to-purple-100/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform origin-bottom scale-y-0 group-hover:scale-y-100" />
-                        
-                        <div className="flex items-center justify-between w-full relative z-10">
-                        <span className="font-medium text-gray-800">{model.name}</span>
-                        {model.id === currentModel && (
-                            <span className="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-800 rounded-full flex items-center">
-                              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-1 animate-pulse"></span>
-                              Active
-                            </span>
-                        )}
-                      </div>
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center bg-black bg-opacity-60">
+          <div className="absolute inset-0" onClick={() => setShowModelSelect(false)}></div>
+          <div className="bg-white w-full md:max-w-[580px] rounded-xl shadow-2xl relative overflow-hidden animate-fade-in-up transform">
+            <div className="relative overflow-hidden">
+              {/* Header */}
+              <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100">
+                <div className="absolute top-4 right-4">
+                  <button
+                    onClick={() => setShowModelSelect(false)}
+                    className="text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800">Select AI Model</h3>
+                <p className="text-sm text-gray-500 mb-5">Select the AI model that best fits your needs</p>
+                
+                {isLoadingModels ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="w-10 h-10 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"></div>
+                    <p className="text-sm text-gray-500">Discovering available models...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1 pb-2">
+                    {models.map((model) => {
+                      // Apply ExtendedGeminiModel type
+                      const extendedModel = model as ExtendedGeminiModel;
+                      const modelDescription = geminiService.getModelDescription(extendedModel);
                       
-                        <div className="flex items-center mt-1 space-x-2 relative z-10">
-                        {extendedModel.multimodal && (
-                          <span className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-800 rounded-full flex items-center">
-                            <Image className="h-2.5 w-2.5 mr-0.5" />
-                            Multimodal
-                          </span>
-                        )}
-                        </div>
+                      // Get capabilities badges
+                      const badges = [];
+                      if (extendedModel.multimodal) {
+                        badges.push({
+                          label: 'Images',
+                          bg: 'bg-blue-100',
+                          text: 'text-blue-800',
+                          icon: <Image className="h-2.5 w-2.5 mr-0.5" />
+                        });
+                      }
+                      
+                      if (extendedModel.apiVersion === 'v1beta') {
+                        badges.push({
+                          label: 'Beta',
+                          bg: 'bg-amber-100',
+                          text: 'text-amber-800',
+                          icon: <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                        });
+                      }
+                      
+                      if (extendedModel.id.includes('flash')) {
+                        badges.push({
+                          label: 'Fast',
+                          bg: 'bg-green-100',
+                          text: 'text-green-800',
+                          icon: <Zap className="h-2.5 w-2.5 mr-0.5" />
+                        });
+                      }
+
+                      if (extendedModel.id.includes('pro') && !extendedModel.id.includes('vision')) {
+                        badges.push({
+                          label: 'Pro',
+                          bg: 'bg-purple-100',
+                          text: 'text-purple-800',
+                          icon: <Star className="h-2.5 w-2.5 mr-0.5" />
+                        });
+                      }
+                      
+                      return (
+                        <button
+                          key={model.id}
+                          onClick={() => {
+                            selectModel(model.id);
+                            setShowModelSelect(false);
+                          }}
+                          className={`model-selector-button group relative flex flex-col items-start w-full px-4 py-3 rounded-xl transition-all duration-300 overflow-hidden ${
+                          model.id === currentModel
+                              ? "bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 active"
+                              : "hover:bg-gray-50 border border-transparent hover:border-gray-100"
+                          }`}
+                        >
+                          {/* Background hover effect */}
+                          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-100/70 to-purple-100/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform origin-bottom scale-y-0 group-hover:scale-y-100" />
+                          
+                          <div className="flex items-center justify-between w-full relative z-10">
+                            <span className="font-medium text-gray-800">{model.name}</span>
+                            {model.id === currentModel && (
+                              <span className="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-800 rounded-full flex items-center">
+                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-1 animate-pulse"></span>
+                                Active
+                              </span>
+                            )}
+                          </div>
                         
-                        {/* Hidden details that appear on hover */}
-                        <div className="mt-2 max-h-0 overflow-hidden transition-all duration-300 ease-in-out group-hover:max-h-24 opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 w-full relative z-10">
-                        {model.description && (
-                            <div className="text-xs text-gray-500 py-1 border-t border-gray-100 mt-1">
-                              <p className="mt-1">{model.description.split('.')[0]}</p>
-                              
+                          <div className="flex items-center mt-1 space-x-2 relative z-10">
+                            {badges.map((badge, i) => (
+                              <span key={i} className={`px-1.5 py-0.5 text-[10px] ${badge.bg} ${badge.text} rounded-full flex items-center`}>
+                                {badge.icon}
+                                {badge.label}
+                              </span>
+                            ))}
+                          </div>
+                          
+                          {/* Description */}
+                          <div className="mt-2 text-xs text-gray-500 relative z-10">
+                            {modelDescription}
+                          </div>
+                          
+                          {/* Hidden details that appear on hover */}
+                          <div className="mt-2 max-h-0 overflow-hidden transition-all duration-300 ease-in-out group-hover:max-h-24 opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 w-full relative z-10">
+                            <div className="text-xs text-gray-500 py-1 border-t border-gray-100 mt-1">                              
                               <div className="flex items-center justify-between mt-2 text-[10px] text-indigo-600">
                                 {extendedModel.inputTokenLimit && (
                                   <span>Input limit: {extendedModel.inputTokenLimit.toLocaleString()} tokens</span>
@@ -517,13 +576,13 @@ export default function ChatPage() {
                                 )}
                               </div>
                             </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
             </div>
           </div>
         </div>
@@ -544,6 +603,12 @@ export default function ChatPage() {
           ) : (
             <>
               <span className="text-sm font-medium text-gray-700 mr-2">{currentModelDetails?.name || 'AI'}</span>
+              {currentModelDetails?.multimodal && (
+                <span className="mr-2 px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-800 rounded-full flex items-center">
+                  <Image className="h-2.5 w-2.5 mr-0.5" />
+                  Images
+                </span>
+              )}
               <button 
                 onClick={() => setShowModelSelect(true)} 
                 className="text-xs text-indigo-600 px-2 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 transition-colors"
@@ -578,7 +643,7 @@ export default function ChatPage() {
                 {[
                   { text: "Explain a concept", icon: <div className="p-1"><MessageSquare className="h-4 w-4" /></div> },
                   { text: "Upload & analyze image", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
-                  { text: "/image a cat in space", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
+                  { text: "/image a rabbit in space", icon: <div className="p-1"><Image className="h-4 w-4" /></div> },
                   { text: "Create a summary", icon: <div className="p-1"><Settings className="h-4 w-4" /></div> }
                 ].map((item, i) => (
                   <button
@@ -825,27 +890,54 @@ export default function ChatPage() {
           
           {/* Enhanced text input */}
           <div className="flex-1 bg-white rounded-2xl flex items-center pl-4 pr-2 py-2 shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow transition-all focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder={`Type a message or "/image" to generate an image...`}
-              className="bg-transparent flex-1 outline-none text-gray-800 placeholder-gray-500 text-sm md:text-base"
-              disabled={isProcessing}
-              autoFocus
-            />
+            <div className="flex-1 flex items-center">
+              {/* Real input for functionality */}
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
+                  className="bg-transparent w-full outline-none text-transparent placeholder-gray-500 text-sm md:text-base caret-gray-800"
+                  placeholder={`Type a message or "/image" to generate an image...`}
+                  disabled={isProcessing}
+                  autoFocus
+                />
+                {/* Visual overlay to show styled text */}
+                <div className="absolute inset-0 pointer-events-none w-full text-sm md:text-base">
+                  {input.trim() === "" ? (
+                    <span className="text-gray-500">Type a message or "/image" to generate an image...</span>
+                  ) : input.toLowerCase().startsWith("/image") ? (
+                    <>
+                      <span className="font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600" style={{ WebkitTextStroke: '0.2px rgba(0,0,0,0.2)' }}>/image</span>
+                      <span className="text-gray-800">{input.substring(6)}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-800">{input}</span>
+                  )}
+                </div>
+              </div>
+              
+              {isImageCommand && (
+                <div className="mr-2 px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full text-white text-xs font-medium animate-pulse flex items-center">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  <span>AI Image Mode</span>
+                </div>
+              )}
+            </div>
             <button 
               onClick={handleSubmit}
               disabled={isProcessing || (!input.trim() && !selectedImage)}
               className={`p-2 rounded-lg ${
                 !isProcessing && (input.trim() || selectedImage)
-                  ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                  ? isImageCommand 
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:opacity-90' 
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
                   : 'bg-gray-100 text-gray-400'
               } transition-colors`}
               aria-label="Send message"

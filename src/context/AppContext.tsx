@@ -140,6 +140,107 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
     }));
   };
 
+  // Send message to get AI response
+  const generateAIResponse = async (chatIdToUse: string, historyForAI: any[]) => {
+    console.log(`Generating AI response for chat ${chatIdToUse}`);
+    
+    try {
+      console.log('Generating AI response...');
+      
+      // Limit history length to avoid token limit errors
+      const limitedHistory = limitMessageHistoryTokens(historyForAI);
+      console.log(`Using ${limitedHistory.length} messages for AI context after token limit check`);
+      
+      // Get an AI response
+      const aiResponse = await geminiService.generateResponse(
+        limitedHistory,
+        currentModel,
+        { temperature: 0.7 }
+      );
+      
+      console.log('Got AI response');
+      
+      // Create an AI message
+      const aiMessage: supabaseService.ChatMessage = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: aiResponse.content,
+        chat_id: chatIdToUse,
+        created_at: new Date().toISOString()
+      };
+      
+      console.log('Created AI message:', { 
+        id: aiMessage.id, 
+        role: aiMessage.role, 
+        timestamp: aiMessage.created_at,
+        content: aiMessage.content.substring(0, 50) + '...'
+      });
+      
+      return aiMessage;
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      throw error;
+    }
+  };
+
+  // Helper function to limit token count for message history
+  const limitMessageHistoryTokens = (messages: any[]): any[] => {
+    if (messages.length === 0) return [];
+    
+    // Set token limits based on model type
+    const MAX_TOKENS = 100000; // Conservative limit well below the 1M token limit
+    
+    // Rough token estimation (very approximate)
+    const estimateTokens = (content: string | any[]): number => {
+      if (typeof content === 'string') {
+        // Rough estimate: 1 token is about 4 characters for English text
+        return Math.ceil(content.length / 4);
+      } else if (Array.isArray(content)) {
+        // For message arrays, calculate total
+        return content.reduce((sum, part) => {
+          if (part.text) {
+            return sum + Math.ceil(part.text.length / 4);
+          }
+          // Images are expensive in tokens
+          if (part.inlineData || part.image_url) {
+            return sum + 1000; // Assume each image is roughly 1000 tokens
+          }
+          return sum;
+        }, 0);
+      }
+      return 0;
+    };
+    
+    // Keep track of total tokens and messages
+    let totalTokens = 0;
+    const limitedMessages = [];
+    
+    // Always include the most recent message (last in the array)
+    const lastMessage = messages[messages.length - 1];
+    limitedMessages.push(lastMessage);
+    totalTokens += estimateTokens(lastMessage.content);
+    
+    // Add previous messages until we approach the token limit
+    // Start from the second most recent message and go backwards
+    for (let i = messages.length - 2; i >= 0; i--) {
+      const message = messages[i];
+      const messageTokens = estimateTokens(message.content);
+      
+      // If adding this message would exceed the limit, stop adding more
+      if (totalTokens + messageTokens > MAX_TOKENS) {
+        console.log(`Token limit reached after ${limitedMessages.length} messages. Estimated tokens: ${totalTokens}`);
+        break;
+      }
+      
+      // Add this message to our limited history
+      limitedMessages.unshift(message); // Add to beginning to maintain order
+      totalTokens += messageTokens;
+    }
+    
+    console.log(`Limited message history from ${messages.length} to ${limitedMessages.length} messages. Estimated tokens: ${totalTokens}`);
+    return limitedMessages;
+  };
+
   // Send a message and get AI response
   const sendMessage = async (content: string) => {
     setIsProcessing(true);
@@ -265,33 +366,22 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
             (messageContent as any[]).push(imagePart);
           } catch (imageError) {
             console.error('Error converting image:', imageError);
-            // Try fallback method for image conversion
-            console.log('Trying fallback method for image conversion');
-            const reader = new FileReader();
-            const imageDataPromise = new Promise<string>((resolve, reject) => {
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = (error) => reject(error);
-              reader.readAsDataURL(selectedImage);
-            });
             
-            try {
-              const imageDataURL = await imageDataPromise;
-              console.log(`Image converted to data URL (length: ${imageDataURL.length})`);
-              const [mimeType, base64Data] = imageDataURL.split(',');
-              if (base64Data) {
-                (messageContent as any[]).push({
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: mimeType.replace('data:', '').split(';')[0]
-                  }
-                });
-                console.log('Successfully created image part using fallback method');
-              } else {
-                console.error('Failed to extract base64 data from image');
-              }
-            } catch (fallbackError) {
-              console.error('Fallback image conversion also failed:', fallbackError);
-            }
+            // Use the error message from the fileToGenerativePart function
+            const errorMessage = imageError instanceof Error 
+              ? imageError.message 
+              : 'There was an unknown error processing the image';
+              
+            // Add a user-friendly error message to the chat
+            addErrorMessageToChat(
+              newChatId || currentChatId,
+              'image',
+              `I couldn't process that image: ${errorMessage} Please try a different image or format.`
+            );
+            
+            // End processing
+            setIsProcessing(false);
+            return;
           }
         }
       }
@@ -382,29 +472,7 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
         console.log(`Sending to AI: "${contentForAI.substring(0, 50)}${contentForAI.length > 50 ? '...' : ''}"`);
         
         // Get an AI response
-        const aiResponse = await geminiService.generateResponse(
-          historyForAI,
-          currentModel,
-          { temperature: 0.7 }
-        );
-        
-        console.log('Got AI response');
-        
-        // Create an AI message
-        const aiMessage: supabaseService.ChatMessage = {
-            id: uuidv4(),
-            role: 'assistant',
-            content: aiResponse.content,
-          chat_id: chatIdToUse,
-            created_at: new Date().toISOString()
-        };
-        
-        console.log('Created AI message:', { 
-          id: aiMessage.id, 
-          role: aiMessage.role, 
-          timestamp: aiMessage.created_at,
-          content: aiMessage.content.substring(0, 50) + '...'
-        });
+        const aiMessage = await generateAIResponse(chatIdToUse, historyForAI);
         
         // Add AI message to state
         setMessages(prev => [...prev, aiMessage]);
@@ -1346,7 +1414,7 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
   };
 
   // Add an error message
-  const addErrorMessageToChat = (chatId: string, errorType: 'database' | 'gemini' | 'general', details?: string) => {
+  const addErrorMessageToChat = (chatId: string, errorType: 'database' | 'gemini' | 'general' | 'image', details?: string) => {
     const baseErrorMessage = {
       id: uuidv4(),
       role: 'assistant' as const,
@@ -1400,7 +1468,23 @@ ${details ? `\n**Error details:** ${details}` : ''}
 If the problem persists, some features like concept card generation might not work properly.
 `;
         break;
-        
+      
+      case 'image':
+        content = `
+## Image Processing Error
+
+I couldn't process the image you uploaded. This might be because:
+
+1. The image format is not supported
+2. The image is too large or complex
+3. There might be an issue with the image data
+
+${details ? `\n**Error details:** ${details}` : ''}
+
+Please try with a different image, preferably a JPEG or PNG with moderate size and resolution.
+`;
+        break;
+     
       default:
         content = `
 ## An Error Occurred
