@@ -656,7 +656,7 @@ export default function ChatPage() {
                   key={message.id} 
                   className={`message-item flex ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`flex flex-col max-w-[85%] md:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex flex-col max-w-[80%] md:max-w-[70%] ${isUser ? 'items-end' : 'items-start'}`}>
                     <div 
                       className={`message rounded-2xl p-4 shadow-sm ${
                         isUser 
@@ -670,7 +670,15 @@ export default function ChatPage() {
                           if (part.text) {
                             return (
                               <div key={`text-${partIndex}`} className="prose-sm">
-                                {part.text}
+                                {isUser ? (
+                                  part.text
+                                ) : (
+                                  <TemplatedResponse
+                                    content={part.text}
+                                    conceptCardStatus={getConceptCardStatus(message.id)}
+                                    userMessage={prevUserMessage}
+                                  />
+                                )}
                               </div>
                             );
                           } else if (part.inlineData || part.inline_data) {
@@ -678,11 +686,11 @@ export default function ChatPage() {
                             if (imgData && imgData.data) {
                               return (
                                 <div key={`img-${partIndex}`} className="mt-2 relative">
-                                  <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm">
+                                  <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm max-w-[400px] mx-auto">
                                     <img 
                                       src={`data:${imgData.mimeType || 'image/png'};base64,${imgData.data}`}
                                       alt="Generated image" 
-                                      className="max-w-full h-auto rounded-lg"
+                                      className="max-w-full h-auto rounded-lg max-h-[300px] object-contain mx-auto"
                                     />
                                   </div>
                                 </div>
@@ -698,11 +706,11 @@ export default function ChatPage() {
                         <div className="mt-2 space-y-2">
                           {message.attachments.map((attachment, i) => (
                             <div key={i} className="relative">
-                              <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm">
+                              <div className="rounded-lg overflow-hidden bg-gray-50/30 backdrop-blur-sm border border-gray-200 shadow-sm max-w-[400px] mx-auto">
                                 <img 
                                   src={attachment} 
                                   alt={`Attachment ${i+1}`} 
-                                  className="max-w-full h-auto rounded-lg"
+                                  className="max-w-full h-auto rounded-lg max-h-[300px] object-contain mx-auto"
                                 />
                               </div>
                             </div>
