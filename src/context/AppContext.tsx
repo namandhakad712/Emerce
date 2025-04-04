@@ -142,95 +142,41 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
 
   // Send a message and get AI response
   const sendMessage = async (content: string) => {
+    setIsProcessing(true);
+    let isNewChat = false;
+    let newChatId: string | null = null;
+    
     try {
-      // Don't allow sending empty messages
-      if (!content.trim() && !selectedImage) {
-        console.log('Tried to send empty message, ignoring');
-        return;
-      }
-      
-      setIsProcessing(true);
-      
-      console.log('Sending message with content:', content.substring(0, 50) + (content.length > 50 ? '...' : ''));
-      
-      // Get current model info to check if it's multimodal
-      const modelInfo = models.find(m => m.id === currentModel);
-      const isMultimodalModel = modelInfo?.multimodal || false;
-      
-      // Log which model we're using and if it supports images
-      console.log(`Using model: ${currentModel}, supports images: ${isMultimodalModel ? 'YES' : 'NO'}`);
-      
-      // Process message content to add heading for complex questions
-      const processedContent = await processMessageWithHeading(content);
-      console.log('Message processed for heading generation');
-      
-      // If sending an image, always mark as NOT an educational query
-      const isImageMessage = selectedImage !== null;
-      if (isImageMessage) {
-        console.log('Message contains an image, treating as non-educational query');
-        
-        // If the current model isn't multimodal, switch to a multimodal model
-        if (!isMultimodalModel) {
-          console.log('Current model does not support images, switching to a multimodal model');
-          
-          // Find the first available multimodal model
-        const multimodalModel = models.find(m => m.multimodal);
-        if (multimodalModel) {
-            console.log(`Automatically switching to ${multimodalModel.name} for image processing`);
-          setCurrentModel(multimodalModel.id);
-        } else {
-            console.warn('No multimodal model available, image may not be processed correctly');
-          }
-        }
-      }
-      
-      // Check if this is an educational query for concept card
-      const isEducationalQuery = !isImageMessage && conceptCardGenerator.isEducationalQuery(content);
-      console.log(`Message is ${isEducationalQuery ? '' : 'not '}an educational query for concept card generation`);
-      
-      // ALWAYS force concept card generation for testing
-      console.log('[DEBUG] Setting forceGenerateCard=true for testing');
-      const forceGenerateCard = !isImageMessage && true;
-      
-      // Original detection
-      const shouldGenerateCard = await conceptCardGenerator.isEducationalQuery(content);
-      console.log(`[DEBUG] Original detection says message is ${shouldGenerateCard ? '' : 'not '}an educational query`);
-      console.log(`[DEBUG] Force override says we ${forceGenerateCard ? 'will' : 'will not'} generate a card`);
-      
-      // Track if we need to create a new chat
-      let isNewChat = false;
-      let newChatId: string | null = null;
-      
-      // Check if we need to create a new chat
-      if (!currentChatId || chatHistory.length === 0) {
-        console.log('No current chat, creating a new one');
-          isNewChat = true;
-        const newChat = await supabaseService.createChat("New Conversation", currentModel);
+      // Create a new chat if needed
+      if (!currentChatId) {
+        console.log('No current chat ID, creating new chat');
+        const newChat = await supabaseService.createChat('New Conversation', currentModel);
         if (newChat) {
           newChatId = newChat.id;
-          console.log(`Created new chat with ID: ${newChatId}`);
-          setCurrentChatId(newChatId);
+          setCurrentChatId(newChat.id);
           setChatHistory(prev => [newChat, ...prev]);
-          } else {
-          console.error('Failed to create new chat');
-          setIsProcessing(false);
-          return;
-        }
+          isNewChat = true;
         } else {
-        console.log(`Using existing chat with ID: ${currentChatId}`);
+          throw new Error('Failed to create new chat');
+        }
       }
       
-      // Format the message content
-      let messageContent: string | Array<{ text?: string; image_url?: string }> = processedContent;
+      // Process the content
+      let messageContent: string | any[] = content;
+      let processedContent = content;
       
       // Handle image uploads if there's a selected image
       if (selectedImage) {
         console.log('Message includes an image');
         messageContent = [];
         
+        // Add text part if provided, otherwise use a default prompt
         if (processedContent.trim()) {
           console.log('Adding text part to message');
           messageContent.push({ text: processedContent });
+        } else {
+          // Use a default prompt for image-only messages
+          messageContent.push({ text: "Analyze this image and provide a detailed description" });
         }
         
         // Convert image to base64 data for Gemini API
@@ -239,7 +185,6 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
           try {
             const imagePart = await geminiService.fileToGenerativePart(selectedImage);
             console.log('Image successfully converted to Gemini format');
-            // Use any type to avoid type checking issues with inlineData
             (messageContent as any[]).push(imagePart);
           } catch (imageError) {
             console.error('Error converting image:', imageError);
@@ -255,10 +200,8 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
             try {
               const imageDataURL = await imageDataPromise;
               console.log(`Image converted to data URL (length: ${imageDataURL.length})`);
-              // Extract just the base64 data and mime type
               const [mimeType, base64Data] = imageDataURL.split(',');
               if (base64Data) {
-                // Use any type to avoid type checking issues with inlineData
                 (messageContent as any[]).push({
                   inlineData: {
                     data: base64Data,
@@ -266,33 +209,12 @@ export const AppProvider: React.FC<{children: React.ReactNode}> = ({ children })
                   }
                 });
                 console.log('Successfully created image part using fallback method');
-            } else {
+              } else {
                 console.error('Failed to extract base64 data from image');
               }
             } catch (fallbackError) {
               console.error('Fallback image conversion also failed:', fallbackError);
             }
-          }
-        } else if (typeof selectedImage === 'string') {
-          console.log('Using existing image data');
-          const imageString = selectedImage as string;
-          if (imageString.startsWith('data:')) {
-            // Handle data URL format
-            const [mimeType, base64Data] = imageString.split(',');
-            if (base64Data) {
-              // Use any type to avoid type checking issues with inlineData
-              (messageContent as any[]).push({
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType.replace('data:', '').split(';')[0]
-                }
-              });
-        } else {
-              messageContent.push({ image_url: imageString });
-            }
-          } else {
-            // Handle other formats
-            messageContent.push({ image_url: imageString });
           }
         }
       }

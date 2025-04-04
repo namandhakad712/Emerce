@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Mic, ChevronUp, Menu, Bell, Plus, Image, X, Grid, ChevronDown, Settings, Layers, AlertTriangle, Edit, Trash2, MessageSquare, Check, Database, Copy, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 import Logo from "../components/Logo";
@@ -292,7 +292,7 @@ export default function ChatPage() {
   ];
 
   const currentModelDetails = models.find(m => m.id === currentModel) as ExtendedGeminiModel;
-  const isMultimodalModel = currentModelDetails?.multimodal || false;
+  const isMultimodalModel = true; // Enable image upload for all models
 
   // Helper function to copy text to clipboard
   const copyToClipboard = async (text: string) => {
@@ -627,27 +627,20 @@ export default function ChatPage() {
         ) : (
           messages.map((message, index) => {
             // Find the previous user message for this AI response
-            const getPreviousUserMessage = () => {
-              if (message.role !== 'assistant' || index === 0) return '';
-              
-              // Look for the most recent user message before this one
-              for (let i = index - 1; i >= 0; i--) {
-                if (messages[i].role === 'user') {
-                  return messages[i].content;
-                }
-              }
-              return '';
-            };
-            
-            const previousUserMessage = message.role === 'assistant' ? getPreviousUserMessage() : '';
-            
+            const previousUserMessage = index > 0 && messages[index - 1].role === 'user' 
+              ? messages[index - 1] 
+              : null;
+
             return (
-              <div key={index} className={`message-item flex flex-col ${message.role === 'assistant' ? 'items-start' : 'items-end'}`}>
+              <div 
+                key={message.id} 
+                className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'} mb-4`}
+              >
                 <div 
                   className={`message max-w-[85%] p-4 rounded-2xl ${
                     message.role === 'assistant' 
                     ? 'bg-white text-slate-800 shadow-sm border border-gray-100' 
-                      : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                   }`}
                 >
                   {/* Message content */}
@@ -661,17 +654,17 @@ export default function ChatPage() {
                     <div>
                       {message.content}
                       {message.attachments && message.attachments.length > 0 && (
-                        <div className="mt-2 rounded-lg overflow-hidden">
-                    <img 
-                      src={message.attachments[0]} 
-                      alt="Attached image" 
-                            className="rounded-lg max-w-full max-h-64 object-contain shadow-inner" 
-                    />
+                        <div className="mt-2 rounded-lg overflow-hidden bg-white/10 backdrop-blur-sm p-2">
+                          <img 
+                            src={message.attachments[0]} 
+                            alt="Attached image" 
+                            className="rounded-lg max-w-full max-h-64 object-contain shadow-inner border border-white/20" 
+                          />
                         </div>
                       )}
-                  </div>
-                )}
-                          </div>
+                    </div>
+                  )}
+                </div>
                 
                 {/* Timestamp with enhanced styling */}
                 <div className={`text-xs ${message.role === 'assistant' ? 'text-left' : 'text-right'} text-gray-500 mt-1 px-2`}>
@@ -740,13 +733,12 @@ export default function ChatPage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className={`w-12 h-12 flex items-center justify-center rounded-full shadow-md transition-all duration-300 
-                ${isImageLoading ? 'bg-amber-500 text-white' : 
+                ${isImageLoading ? 'bg-amber-500 text-white animate-pulse' : 
                   selectedImage ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white ring-2 ring-indigo-200' : 
-                    isMultimodalModel ? 'bg-white hover:bg-gray-50 text-indigo-600 hover:shadow-lg hover:-translate-y-0.5 border border-gray-200' :
-                      'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    'bg-white hover:bg-gray-50 text-indigo-600 hover:shadow-lg hover:-translate-y-0.5 border border-gray-200'
                 }`}
-              title={isMultimodalModel ? "Upload image" : "This model doesn't support images"}
-              disabled={!isMultimodalModel || isImageLoading}
+              title="Upload image"
+              disabled={isImageLoading}
             >
               {isImageLoading ? (
                 <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
@@ -759,7 +751,7 @@ export default function ChatPage() {
                 accept="image/*"
                 onChange={handleFileChange}
                 className="hidden"
-                disabled={isImageLoading || !isMultimodalModel}
+                disabled={isImageLoading}
               />
             </button>
             {/* Enhanced status indicators */}
@@ -773,7 +765,7 @@ export default function ChatPage() {
                 Processing...
               </span>
             )}
-            {!selectedImage && !isImageLoading && isMultimodalModel && (
+            {!selectedImage && !isImageLoading && (
               <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 whitespace-nowrap text-xs text-gray-500 font-medium bg-white px-2 py-0.5 rounded-full shadow-sm border border-gray-100">
                 Add image
               </span>

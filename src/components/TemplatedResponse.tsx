@@ -1,11 +1,14 @@
 import React from 'react';
+import { MessageSquare, Layers, AlertTriangle, Edit, Trash2, Check, Database, Copy, Terminal } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
-import ConceptCardStatus from './ConceptCardStatus';
+import { ChatMessage } from '../services/supabase';
+import { ConceptCardStatus } from '../context/AppContext';
+import ConceptCardStatusComponent from './ConceptCardStatus';
 
 interface TemplatedResponseProps {
   content: string;
-  conceptCardStatus: 'pending' | 'generating' | 'success' | 'failed' | 'none';
-  userMessage?: string; // Optional original user message for context
+  conceptCardStatus: ConceptCardStatus;
+  userMessage: ChatMessage | null;
 }
 
 /**
@@ -15,7 +18,7 @@ interface TemplatedResponseProps {
 const TemplatedResponse: React.FC<TemplatedResponseProps> = ({ 
   content, 
   conceptCardStatus,
-  userMessage = ''
+  userMessage 
 }) => {
   // Check if this looks like a study question response
   const isStudyResponse = (
@@ -63,7 +66,7 @@ const TemplatedResponse: React.FC<TemplatedResponseProps> = ({
         <div className="h-1 w-full bg-gradient-to-r from-purple-400 via-indigo-500 to-blue-500 rounded-full mt-3 mb-1"></div>
         
         {/* Always show concept card status for study content */}
-        {conceptCardStatus !== 'none' && <ConceptCardStatus status={conceptCardStatus} />}
+        {conceptCardStatus !== 'none' && <ConceptCardStatusComponent status={conceptCardStatus} />}
       </div>
     </div>
   );
